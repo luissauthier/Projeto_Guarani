@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     buttonText: {
-        color: '#000',
+        color: '#FFF',
         fontSize: 18, // Tamanho da fonte maior
         fontWeight: 'bold',
         textTransform: 'uppercase', // Texto em maiúsculas
