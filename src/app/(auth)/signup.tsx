@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     buttonText: {
-        color: '#FFF',
+        color: '#000',
         fontSize: 18,
         fontWeight: 'bold',
         textTransform: 'uppercase',
