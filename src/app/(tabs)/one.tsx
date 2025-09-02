@@ -651,10 +651,6 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.2,
         shadowRadius: 5,
         elevation: 5,
-        backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M287%2069.4L146.2%20209.2%205.4%2069.4c-1.6-1.6-3.6-2.4-5.6-2.4h-3.4c-2%200-4%200.8-5.6%202.4-3.2%203.2-3.2%208.2%200%2011.4l150%20150c1.6%201.6%203.6%202.4%205.6%202.4s4-0.8%205.6-2.4l150-150c3.2-3.2%203.2-8.2%200-11.4-1.6-1.6-3.6-2.4-5.6-2.4h-3.4c-2%200-4%200.8-5.6%202.4z%22%2F%3E%3C%2Fsvg%3E")', // Seta personalizada para o select
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 15px top 50%',
-        backgroundSize: '12px auto',
     },
     staticFieldLabel: {
         fontSize: 14,

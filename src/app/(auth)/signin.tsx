@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
+import React from 'react';
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase'; // Certifique-se de que o caminho para o supabase está correto
 import { router } from 'expo-router';

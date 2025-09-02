@@ -1,4 +1,5 @@
 import { User } from '@supabase/supabase-js';
+import React from 'react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
