@@ -114,55 +114,27 @@ export default function Signup() {
 
     // Função para lidar com o cadastro do usuário
     async function handleSignUp() {
+        // dentro do handleSignUp()
         setLoading(true);
 
         const { data, error } = await supabase.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-                data: {
-                    name: name,
-                    is_admin: isAdmin
-                }
-            }
+        email,
+        password,
+        options: { data: { full_name: name } } // o trigger usa isso
         });
 
         if (error) {
-            Alert.alert('Erro de Cadastro', error.message);
-            setLoading(false);
-            return;
+        Alert.alert('Erro de Cadastro', error.message);
+        setLoading(false);
+        return;
         }
 
-        if (data.user) {
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .insert([
-                    {
-                        id: data.user.id,
-                        name: name,
-                        is_admin: isAdmin,
-                        address_cep: cep,
-                        address_street: street,
-                        address_neighborhood: neighborhood,
-                        address_city: city,
-                        address_state: state,
-                        created_at: new Date().toISOString()
-                    }
-                ]);
-
-            if (profileError) {
-                Alert.alert('Erro', `Erro ao salvar perfil: ${profileError.message}`);
-                console.error("Erro ao salvar perfil Supabase:", profileError);
-            } else {
-                Alert.alert('Sucesso', 'Conta criada e perfil salvo com sucesso!');
-                router.replace('/(auth)/signin'); // Redireciona para a tela de login após o cadastro
-            }
-        } else {
-            Alert.alert('Erro', 'Usuário não retornado após o cadastro.');
-        }
-
+        // a entrada em public.users já foi criada com type_user = 'coach' (padrão)
+        Alert.alert('Sucesso', 'Conta criada! Faça login para entrar.');
+        router.replace('/(auth)/signin');
         setLoading(false);
     }
+
 
     return (
         <SafeAreaView style={styles.safeArea}>
