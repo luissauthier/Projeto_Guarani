@@ -3,14 +3,15 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
 
-// Estenda a interface User para incluir is_admin
+type Role = 'admin' | 'coach' | 'viewer';
+
 interface AppUser extends User {
-  is_admin?: boolean; // Adicionamos a propriedade is_admin
+  type_user?: Role;
 }
 
 interface AuthContextProps {
-  user: AppUser | null; // Usamos AppUser aqui
-  isAdmin: boolean; // Adicionamos isAdmin para fácil acesso
+  user: AppUser | null;
+  isAdmin: boolean;
   setAuth: (authUser: AppUser | null) => void;
 }
 
@@ -20,53 +21,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    const fetchUserAndProfile = async (sessionUser: User) => {
-      // Busca o perfil do usuário na sua tabela 'users'
-      const { data, error } = await supabase
-        .from('users') // Nome da sua tabela de usuários
-        .select('is_admin')
-        .eq('id', sessionUser.id)
-        .single();
+  async function fetchProfile(sessionUser: User) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('type_user')
+      .eq('id', sessionUser.id)
+      .single();
 
-      if (error) {
-        console.error('Erro ao buscar perfil do usuário:', error.message);
-        // Se houver um erro, trate como não admin por segurança
-        setUser({ ...sessionUser, is_admin: false });
-        setIsAdmin(false);
-      } else if (data) {
-        const appUser: AppUser = { ...sessionUser, is_admin: data.is_admin };
-        setUser(appUser);
-        setIsAdmin(data.is_admin || false); // Garante que seja boolean
-      } else {
-        // Usuário sem entrada na tabela 'users' (ou sem is_admin), trate como não admin
-        setUser({ ...sessionUser, is_admin: false });
-        setIsAdmin(false);
-      }
-    };
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        await fetchUserAndProfile(session.user);
-        router.replace('/(tabs)/one');
-        return;
-      }
-      setUser(null);
+    if (error || !data) {
+      // fallback seguro
+      const appUser: AppUser = { ...sessionUser, type_user: 'viewer' };
+      setUser(appUser);
       setIsAdmin(false);
-      router.replace('/(auth)/signin');
-    });
+      return;
+    }
 
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    const appUser: AppUser = { ...sessionUser, type_user: data.type_user as Role };
+    setUser(appUser);
+    setIsAdmin(data.type_user === 'admin');
+  }
+
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await fetchProfile(session.user);
+        router.replace('/(tabs)/one');
+      } else {
+        setUser(null);
+        setIsAdmin(false);
+        router.replace('/(auth)/signin');
+      }
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const setAuth = (authUser: AppUser | null) => {
     setUser(authUser);
-    setIsAdmin(authUser?.is_admin || false);
+    setIsAdmin(authUser?.type_user === 'admin');
   };
 
-  return <AuthContext.Provider value={{ user, isAdmin, setAuth }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, isAdmin, setAuth }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => useContext(AuthContext);
