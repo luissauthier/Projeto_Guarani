@@ -35,10 +35,7 @@ export default function Login() {
                     <View style={styles.header}>
                         {/* Novo estilo para o logotipo "Cartech" */}
                         <Text style={styles.logoText}>
-                            Cartech
-                        </Text>
-                        <Text style={styles.slogan}>
-                            Sua jornada começa aqui.
+                            Projeto Guarani
                         </Text>
                     </View>
 
@@ -87,7 +84,7 @@ export default function Login() {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#0A1931', // Cor de fundo principal: Azul escuro profundo
+        backgroundColor: '#18641c', // Cor de fundo principal: Azul escuro profundo
     },
     scrollViewContent: {
         flexGrow: 1,
@@ -113,7 +110,7 @@ const styles = StyleSheet.create({
     },
     slogan: {
         fontSize: 20, // Tamanho da fonte ajustado
-        color: '#E0E0E0', // Cinza claro para o slogan
+        color: '#000000', // Cinza claro para o slogan
         textAlign: 'center',
         maxWidth: 300,
         lineHeight: 28, // Altura da linha para melhor leitura
@@ -123,14 +120,14 @@ const styles = StyleSheet.create({
     },
     input: {
         height: 55, // Um pouco maior
-        backgroundColor: '#203A4A', // Fundo dos inputs em um tom de azul escuro diferente
+        backgroundColor: '#ffffff', // Fundo dos inputs em um tom de azul escuro diferente
         borderRadius: 12, // Cantos mais arredondados
         paddingHorizontal: 20,
         marginBottom: 20,
-        color: '#FFF', // Texto digitado em branco
+        color: '#000000', // Texto digitado em branco
         fontSize: 16,
         borderWidth: 1,
-        borderColor: '#4A6572', // Borda sutil
+        borderColor: '#3c7997', // Borda sutil
         shadowColor: '#000', // Sombra para os inputs
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
@@ -138,13 +135,13 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     button: {
-        backgroundColor: '#007BFF', // Azul vibrante para o botão principal
+        backgroundColor: '#ffffff', // Azul vibrante para o botão principal
         paddingVertical: 18, // Mais padding
         borderRadius: 12, // Cantos arredondados
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 10,
-        shadowColor: '#007BFF', // Sombra com cor do botão
+        shadowColor: '#000000', // Sombra com cor do botão
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
@@ -157,7 +154,7 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     buttonText: {
-        color: '#FFF',
+        color: '#000000',
         fontSize: 18, // Tamanho da fonte maior
         fontWeight: 'bold',
         textTransform: 'uppercase', // Texto em maiúsculas
@@ -168,7 +165,7 @@ const styles = StyleSheet.create({
         alignSelf: 'center', // Centraliza o link
     },
     linkText: {
-        color: '#00C2CB', // Um tom de ciano para o link, criando contraste
+        color: '#00f2ff', // Um tom de ciano para o link, criando contraste
         fontSize: 15,
         fontWeight: '600',
         textDecorationLine: 'underline', // Sublinhado para indicar que é um link
