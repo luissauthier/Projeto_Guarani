@@ -310,13 +310,13 @@ export default function TabOneScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.logoText}>Cartech</Text>
+                <Text style={styles.logoText}>Projeto Guarani</Text>
                 <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
-                    <Feather name="log-out" size={24} color="#00C2CB" /> {/* Cor do ícone de logout */}
+                    <Feather name="log-out" size={24} color="#ffffff" /> {/* Cor do ícone de logout */}
                 </TouchableOpacity>
             </View>
 
-            <Text style={styles.sectionTitle}>Seus Pedidos de Veículos</Text>
+            <Text style={styles.sectionTitle}>Treinos disponíveis</Text>
 
             {fetchingData ? (
                 <ActivityIndicator size="large" color="#007BFF" style={styles.loadingIndicator} />
@@ -436,7 +436,7 @@ export default function TabOneScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0A1931', // Fundo principal
+        backgroundColor: '#18641c', // Fundo principal
         paddingHorizontal: 16,
     },
     header: {
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     },
     card: {
         flexDirection: 'row',
-        backgroundColor: '#1E2F47', // Cor de fundo do cartão
+        backgroundColor: '#2aa530', // Cor de fundo do cartão
         borderRadius: 12,
         marginBottom: 15,
         padding: 15,
@@ -737,14 +737,14 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: 25,
         bottom: 25,
-        backgroundColor: '#00C2CB', // Um toque de azul ciano para o FAB
+        backgroundColor: '#59b95e', // Um toque de azul ciano para o FAB
         width: 60,
         height: 60,
         borderRadius: 30,
         justifyContent: 'center',
         alignItems: 'center',
         elevation: 10,
-        shadowColor: '#00C2CB',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.5,
         shadowRadius: 10,

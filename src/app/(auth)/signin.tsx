@@ -84,7 +84,7 @@ export default function Login() {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#18641c', // Cor de fundo principal: Azul escuro profundo
+        backgroundColor: '#18641c', // Cor de fundo principal: Verde escuro
     },
     scrollViewContent: {
         flexGrow: 1,
