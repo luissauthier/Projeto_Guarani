@@ -1,84 +1,73 @@
 import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
-import React from 'react';
-import { useState } from 'react';
-import { supabase } from '../../lib/supabase'; // Certifique-se de que o caminho para o supabase está correto
+import React, { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { router } from 'expo-router';
 
 export default function Login() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-    async function handleSignIn() {
-        setLoading(true);
+  async function handleSignIn() {
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email: email,
-            password: password,
-        });
-
-        if (error) {
-            Alert.alert('Erro de Login', error.message);
-            setLoading(false);
-            return;
-        }
-
-        setLoading(false);
-        router.replace('/(tabs)/one'); // Redireciona para a tela principal após o login
+      // NÃO force rota aqui. O AuthContext já vai redirecionar.
+      // Se quiser forçar, use: router.replace('/(tabs)/treinos');
+    } catch (e: any) {
+      Alert.alert('Erro de Login', e.message);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    return (
-        <SafeAreaView style={styles.safeArea}>
-            <ScrollView contentContainerStyle={styles.scrollViewContent}>
-                <View style={styles.container}>
-                    <View style={styles.header}>
-                        {/* Novo estilo para o logotipo "Cartech" */}
-                        <Text style={styles.logoText}>
-                            Projeto Guarani
-                        </Text>
-                    </View>
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.scrollViewContent}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.logoText}>Projeto Guarani</Text>
+          </View>
 
-                    <View style={styles.formContainer}>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Seu email"
-                            placeholderTextColor="#A0A0A0"
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                            value={email}
-                            onChangeText={setEmail}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Sua senha"
-                            placeholderTextColor="#A0A0A0"
-                            secureTextEntry={true}
-                            value={password}
-                            onChangeText={setPassword}
-                        />
-                        <Pressable
-                            style={({ pressed }) => [
-                                styles.button,
-                                pressed && styles.buttonPressed,
-                            ]}
-                            onPress={handleSignIn}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#FFF" />
-                            ) : (
-                                <Text style={styles.buttonText}>Acessar</Text>
-                            )}
-                        </Pressable>
-                        <Link href='/(auth)/signup' style={styles.link}>
-                            <Text style={styles.linkText}>Não tem uma conta? Cadastre-se</Text>
-                        </Link>
-                    </View>
-                </View>
-            </ScrollView>
-        </SafeAreaView>
-    );
+          <View style={styles.formContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Seu email"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Sua senha"
+              placeholderTextColor="#A0A0A0"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+
+            <Pressable
+              style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+              onPress={handleSignIn}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
+            </Pressable>
+
+            {/* Você está usando this route como pré-inscrição. OK! */}
+            <Link href='/(auth)/signup' style={styles.link}>
+              <Text style={styles.linkText}>Pré-inscrição de jogador</Text>
+            </Link>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
