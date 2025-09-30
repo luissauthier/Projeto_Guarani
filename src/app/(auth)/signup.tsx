@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
-import React from 'react';
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, SafeAreaView, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect, useCallback } from 'react';
@@ -7,14 +8,110 @@ import { supabase } from '../../lib/supabase'; // Certifique-se de que o caminho
 import { WebView } from 'react-native-webview';
 
 export default function Signup() {
-    const [namej, setNamej] = useState('');
-    const [date, setDate] = useState('');
-    const [namer, setNamer] = useState('');
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [telefone, setTelefone] = useState('');
     const [password, setPassword] = useState('');
+    const [cep, setCep] = useState('');
     const [isAdmin, setIsAdmin] = useState(false);
+    const [street, setStreet] = useState('');
+    const [neighborhood, setNeighborhood] = useState('');
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
+    const [mapHtml, setMapHtml] = useState('');
     const [loading, setLoading] = useState(false);
+    const [addressLoading, setAddressLoading] = useState(false);
+
+    // Função para buscar o endereço com base no CEP
+    const fetchAddressFromCEP = useCallback(async (currentCep: string) => {
+        if (currentCep.length === 8) {
+            setAddressLoading(true);
+            try {
+                const response = await fetch(`https://viacep.com.br/ws/${currentCep}/json/`);
+                const data = await response.json();
+
+                if (data.erro) {
+                    Alert.alert('Erro', 'CEP não encontrado ou inválido.');
+                    setStreet('');
+                    setNeighborhood('');
+                    setCity('');
+                    setState('');
+                    setMapHtml('');
+                } else {
+                    setStreet(data.logradouro || '');
+                    setNeighborhood(data.bairro || '');
+                    setCity(data.localidade || '');
+                    setState(data.uf || '');
+                }
+            } catch (error: any) {
+                Alert.alert('Erro', `Erro ao buscar CEP: ${error.message}`);
+                console.error("Erro ao buscar CEP:", error);
+            } finally {
+                setAddressLoading(false);
+            }
+        } else if (currentCep.length < 8) {
+            setStreet('');
+            setNeighborhood('');
+            setCity('');
+            setState('');
+            setMapHtml('');
+        }
+    }, []);
+
+    // Efeito para chamar a função de busca de CEP com um debounce
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            fetchAddressFromCEP(cep);
+        }, 500); // Debounce de 500ms
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [cep, fetchAddressFromCEP]);
+
+    // Efeito para gerar o HTML do mapa quando os dados de endereço mudam
+    useEffect(() => {
+        if (city && state) {
+            const fullAddress = street ? `${street}, ${city}, ${state}, Brasil` : `${city}, ${state}, Brasil`;
+            const encodedAddress = encodeURIComponent(fullAddress);
+            // Substitua 'YOUR_GOOGLE_MAPS_API_KEY' pela sua chave real do Google Maps
+            const googleMapsApiKey = 'AIzaSyBGL4L3AZvlJgSJv_RNNDCBCG9HJwwpCWI';
+
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <style>
+                        html, body {
+                            margin: 0;
+                            padding: 0;
+                            width: 100%;
+                            height: 100%;
+                            overflow: hidden;
+                        }
+                        iframe {
+                            width: 100%;
+                            height: 100%;
+                            border: none;
+                            display: block;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <iframe
+                        src="https://www.google.com/maps/embed/v1/place?key=${googleMapsApiKey}&q=${encodedAddress}"
+                        allowfullscreen
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </body>
+                </html>
+            `;
+            setMapHtml(htmlContent);
+        } else {
+            setMapHtml('');
+        }
+    }, [street, city, state]);
 
     // Função para lidar com o cadastro do usuário
     async function handleSignUp() {
@@ -24,7 +121,7 @@ export default function Signup() {
         const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: namer } } // o trigger usa isso
+        options: { data: { full_name: name } } // o trigger usa isso
         });
 
         if (error) {
@@ -38,7 +135,7 @@ export default function Signup() {
         router.replace('/(auth)/signin');
         setLoading(false);
     }
-
+  }
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -50,58 +147,31 @@ export default function Signup() {
                             <Ionicons name="arrow-back" size={28} color="#FFF" />
                         </Pressable>
                         <Text style={styles.logoText}>
-                            Projeto Guarani
+                            Cartech
                         </Text>
                         <Text style={styles.slogan}>
-                            Inscrição do Jogardor
+                            Crie sua conta
                         </Text>
                     </View>
 
                     <View style={styles.formContainer}>
                         <TextInput
                             style={styles.input}
-                            placeholder="Nome Completo Jogador"
+                            placeholder="Nome Completo"
                             placeholderTextColor="#A0A0A0"
                             keyboardType="default"
                             autoCapitalize="words"
-                            value={namej}
-                            onChangeText={setNamej}
+                            value={name}
+                            onChangeText={setName}
                         />
                         <TextInput
                             style={styles.input}
-                            placeholder="Data de nascimento Jogador"
-                            placeholderTextColor="#A0A0A0"
-                            keyboardType="numeric"
-                            autoCapitalize="none"
-                            value={date}
-                            onChangeText={setDate}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Nome Completo Responsável"
-                            placeholderTextColor="#A0A0A0"
-                            keyboardType="default"
-                            autoCapitalize="none"
-                            value={namer}
-                            onChangeText={setNamer}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Email"
+                            placeholder="Seu email"
                             placeholderTextColor="#A0A0A0"
                             keyboardType="email-address"
                             autoCapitalize="none"
                             value={email}
                             onChangeText={setEmail}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Telefone"
-                            placeholderTextColor="#A0A0A0"
-                            keyboardType="numeric"
-                            autoCapitalize="none"
-                            value={telefone}
-                            onChangeText={setTelefone}
                         />
                         <TextInput
                             style={styles.input}
@@ -112,6 +182,60 @@ export default function Signup() {
                             onChangeText={setPassword}
                         />
 
+                        {/* Rádios estilizados */}
+                        <View style={styles.radioContainer}>
+                            <Text style={styles.radioLabel}>Tipo de Usuário:</Text>
+                            <Pressable
+                                style={[styles.radioButton, !isAdmin && styles.radioButtonSelected]}
+                                onPress={() => setIsAdmin(false)}
+                            >
+                                <Text style={styles.radioText}>Normal</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.radioButton, isAdmin && styles.radioButtonSelected]}
+                                onPress={() => setIsAdmin(true)}
+                            >
+                                <Text style={styles.radioText}>Administrador</Text>
+                            </Pressable>
+                        </View>
+
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Seu CEP (apenas números)"
+                            placeholderTextColor="#A0A0A0"
+                            keyboardType="numeric"
+                            value={cep}
+                            onChangeText={(text) => setCep(text.replace(/\D/g, '').substring(0, 8))}
+                            maxLength={8}
+                        />
+
+                        {addressLoading && (
+                            <ActivityIndicator size="small" color="#00C2CB" style={{ marginBottom: 16 }} />
+                        )}
+
+                        {(street || neighborhood || city || state) ? (
+                            <View style={styles.addressContainer}>
+                                <Text style={styles.addressTitle}>Endereço Encontrado:</Text>
+                                <Text style={styles.addressText}><Text style={styles.addressLabel}>Rua:</Text> {street || 'N/A'}</Text>
+                                <Text style={styles.addressText}><Text style={styles.addressLabel}>Bairro:</Text> {neighborhood || 'N/A'}</Text>
+                                <Text style={styles.addressText}><Text style={styles.addressLabel}>Cidade:</Text> {city || 'N/A'}</Text>
+                                <Text style={styles.addressText}><Text style={styles.addressLabel}>Estado:</Text> {state || 'N/A'}</Text>
+                            </View>
+                        ) : null}
+
+                        {mapHtml ? (
+                            <View style={styles.mapContainer}>
+                                <WebView
+                                    style={styles.map}
+                                    originWhitelist={['*']}
+                                    source={{ html: mapHtml }}
+                                    javaScriptEnabled={true}
+                                    domStorageEnabled={true}
+                                    startInLoadingState={true}
+                                    renderLoading={() => <ActivityIndicator size="large" color="#00C2CB" />}
+                                />
+                            </View>
+                        ) : null}
 
                         <Pressable
                             style={({ pressed }) => [
@@ -124,7 +248,7 @@ export default function Signup() {
                             {loading ? (
                                 <ActivityIndicator color="#FFF" />
                             ) : (
-                                <Text style={styles.buttonText}>Enviar Inscrição</Text>
+                                <Text style={styles.buttonText}>Cadastrar</Text>
                             )}
                         </Pressable>
                     </View>
@@ -137,7 +261,7 @@ export default function Signup() {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#18641c',
+        backgroundColor: '#0A1931',
     },
     scrollViewContent: {
         flexGrow: 1,
@@ -245,7 +369,7 @@ const styles = StyleSheet.create({
         padding: 20,
         marginBottom: 20,
         borderWidth: 1,
-        borderColor: '#ffffff',
+        borderColor: '#4A6572',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
@@ -286,26 +410,26 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     button: {
-        backgroundColor: '#2aa530',
+        backgroundColor: '#007BFF',
         paddingVertical: 18,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 10,
-        shadowColor: '#157419',
+        shadowColor: '#007BFF',
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.4,
         shadowRadius: 8,
         elevation: 8,
     },
     buttonPressed: {
-        backgroundColor: '#2aa530',
+        backgroundColor: '#0056b3',
         shadowOpacity: 0.2,
         shadowRadius: 4,
         elevation: 4,
     },
     buttonText: {
-        color: '#ffffff',
+        color: '#000',
         fontSize: 18,
         fontWeight: 'bold',
         textTransform: 'uppercase',

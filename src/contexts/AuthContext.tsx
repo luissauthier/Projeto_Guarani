@@ -1,6 +1,6 @@
+// contexts/AuthContext.tsx
 import { User } from '@supabase/supabase-js';
-import React from 'react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
 
@@ -12,44 +12,42 @@ interface AppUser extends User {
 
 interface AuthContextProps {
   user: AppUser | null;
+  role: Role;
   isAdmin: boolean;
+  isCoach: boolean;
   setAuth: (authUser: AppUser | null) => void;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext({} as AuthContextProps);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<Role>('viewer');
 
   async function fetchProfile(sessionUser: User) {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('users')
       .select('type_user')
       .eq('id', sessionUser.id)
       .single();
 
-    if (error || !data) {
-      // fallback seguro
-      const appUser: AppUser = { ...sessionUser, type_user: 'viewer' };
-      setUser(appUser);
-      setIsAdmin(false);
-      return;
-    }
-
-    const appUser: AppUser = { ...sessionUser, type_user: data.type_user as Role };
+    const r = (data?.type_user as Role) ?? 'viewer';
+    const appUser: AppUser = { ...sessionUser, type_user: r };
     setUser(appUser);
-    setIsAdmin(data.type_user === 'admin');
+    setRole(r);
+
+    // redirecionamento centralizado aqui
+    router.replace('/(tabs)/one'); // admin e coach caem na aba de treinos por padrão
   }
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await fetchProfile(session.user);
-        router.replace('/(tabs)/one');
       } else {
         setUser(null);
-        setIsAdmin(false);
+        setRole('viewer');
         router.replace('/(auth)/signin');
       }
     });
@@ -58,11 +56,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const setAuth = (authUser: AppUser | null) => {
     setUser(authUser);
-    setIsAdmin(authUser?.type_user === 'admin');
+    setRole(authUser?.type_user ?? 'viewer');
   };
 
+  const isAdmin = role === 'admin';
+  const isCoach = role === 'coach';
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    // o onAuthStateChange já redireciona para /signin
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isAdmin, setAuth }}>
+    <AuthContext.Provider value={{ user, role, isAdmin, isCoach, setAuth, signOut }}>
       {children}
     </AuthContext.Provider>
   );

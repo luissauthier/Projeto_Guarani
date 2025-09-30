@@ -1,313 +1,111 @@
 import { useAuth } from '@/src/contexts/AuthContext';
-import * as ImagePicker from 'expo-image-picker'; // Importação não utilizada nesta tela, pode ser removida se não for usada em outro lugar
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    FlatList,
-    Modal,
-    ScrollView,
-    KeyboardAvoidingView,
-    Platform,
-    ActivityIndicator // Adicionado para indicar carregamento no modal
+  Alert,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  FlatList,
+  ActivityIndicator,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Feather } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+
+type Treino = {
+  id: string;
+  data_hora: string;   // timestamptz
+  treinador_id: string;
+  local: string | null;
+  descricao: string | null;
+};
 
 export default function TabOneScreen() {
-    const { setAuth, user, isAdmin } = useAuth(); // Obtenha isAdmin e user do AuthContext
+  const { setAuth, user, isAdmin, isCoach } = useAuth();
 
-    // Função para lidar com o logout do usuário
-    async function handleSignOut() {
-        const { error } = await supabase.auth.signOut();
-        setAuth(null);
-        if (error) {
-            Alert.alert('Erro', 'Erro ao sair da conta, tente mais tarde.');
-        }
+  async function handleSignOut() {
+    const { error } = await supabase.auth.signOut();
+    setAuth(null);
+    if (error) Alert.alert('Erro', 'Erro ao sair da conta, tente mais tarde.');
+  }
+
+  const [treinos, setTreinos] = useState<Treino[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // mini-form para criar treino
+  const [criando, setCriando] = useState(false);
+  const [dataHora, setDataHora] = useState(''); // "AAAA-MM-DD HH:MM"
+  const [local, setLocal] = useState('');
+  const [descricao, setDescricao] = useState('');
+
+  const loadTreinos = useCallback(async () => {
+    setLoading(true);
+    // RLS já filtra: coach só enxerga os dele; admin enxerga tudo
+    const { data, error } = await supabase
+      .from('treinos')
+      .select('*')
+      .gte('data_hora', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // últimos 1 dia + futuros
+      .order('data_hora', { ascending: true });
+
+    if (error) {
+      Alert.alert('Erro', error.message);
+      setTreinos([]);
+    } else {
+      setTreinos((data ?? []) as Treino[]);
     }
+    setLoading(false);
+  }, []);
 
-    const [modalVisible, setModalVisible] = useState(false);
-    const [editingPedido, setEditingPedido] = useState<Pedidos | null>(null);
-    const [selectedCarId, setSelectedCarId] = useState<number | null>(null);
-    const [days, setDays] = useState('');
-    const [cars, setCars] = useState<Carros[]>([]);
-    const [pedidos, setPedidos] = useState<Pedidos[]>([]);
-    const [totalValue, setTotalValue] = useState('0.00');
-    const [fetchingData, setFetchingData] = useState(true); // Novo estado para controlar o carregamento inicial
+  useEffect(() => {
+    loadTreinos();
+  }, [loadTreinos]);
 
-    // Interface para os dados de Carros
-    interface Carros {
-        id: number;
-        modelo: string;
-        descricao: string;
-        preco_diaria: number;
-        imagem: string | null;
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadTreinos();
+    setRefreshing(false);
+  }, [loadTreinos]);
+
+  async function criarTreino() {
+    if (!user?.id) return Alert.alert('Erro', 'Usuário não identificado.');
+    if (!dataHora.trim()) return Alert.alert('Atenção', 'Informe data e hora (AAAA-MM-DD HH:MM).');
+
+    try {
+      setCriando(true);
+      // transforma "YYYY-MM-DD HH:mm" em ISO
+      const iso = new Date(dataHora.replace(' ', 'T') + ':00').toISOString();
+
+      const { error } = await supabase.from('treinos').insert({
+        data_hora: iso,
+        treinador_id: user.id,
+        local: local || null,
+        descricao: descricao || null,
+      });
+
+      if (error) throw error;
+
+      setDataHora('');
+      setLocal('');
+      setDescricao('');
+      await loadTreinos();
+      Alert.alert('Sucesso', 'Treino criado.');
+    } catch (e: any) {
+      Alert.alert('Erro ao criar treino', e.message);
+    } finally {
+      setCriando(false);
     }
+  }
 
-    // Interface para os dados de Pedidos
-    interface Pedidos {
-        id: number;
-        carro_id: number;
-        user_id: string;
-        dias: number;
-        preco_total: number;
-        users?: { name: string | null };
-        user_display_name?: string;
-    }
-
-    // Busca a lista de carros do Supabase
-    const fetchCars = async () => {
-        try {
-            const { data, error } = await supabase.from('carros').select('*');
-            if (error) {
-                console.error('Erro ao buscar carros:', error.message);
-            } else {
-                setCars(data || []);
-                // Define o carro selecionado padrão se não houver um ou se o atual não existir
-                if (data.length > 0 && (selectedCarId === null || !data.some(car => car.id === selectedCarId))) {
-                    setSelectedCarId(data[0].id);
-                }
-            }
-        } catch (error) {
-            console.error('Erro inesperado ao buscar carros:', error);
-        }
-    };
-
-    // Busca a lista de pedidos do Supabase
-    const fetchPedidos = async () => {
-        if (!user) { // Certifique-se de que o usuário está carregado
-            console.warn('Usuário não autenticado. Não é possível buscar pedidos.');
-            setPedidos([]);
-            setFetchingData(false); // Conclui o carregamento mesmo sem usuário
-            return;
-        }
-
-        setFetchingData(true); // Inicia o carregamento
-        try {
-            let query = supabase.from('pedidos').select('*, users(name)');
-
-            if (!isAdmin) {
-                // Se não for admin, filtre por user_id
-                query = query.eq('user_id', user.id);
-            }
-
-            const { data, error } = await query.order('id', { ascending: false });
-
-            if (error) {
-                console.error('Erro ao buscar pedidos:', error.message);
-                Alert.alert('Erro', `Erro ao buscar pedidos: ${error.message}`);
-                setPedidos([]);
-                return;
-            }
-
-            if (!data) {
-                setPedidos([]);
-                return;
-            }
-
-            // Mapeia os pedidos para incluir o nome do usuário (para admins)
-            const pedidosWithUserNames = data.map(pedido => {
-                const userDisplayName = pedido.users?.name || 'Usuário Desconhecido';
-                return {
-                    ...pedido,
-                    user_display_name: userDisplayName,
-                };
-            });
-
-            setPedidos(pedidosWithUserNames);
-        } catch (error: any) {
-            console.error('Erro inesperado ao buscar pedidos:', error.message);
-            Alert.alert('Erro', `Erro inesperado: ${error.message}`);
-        } finally {
-            setFetchingData(false); // Finaliza o carregamento
-        }
-    };
-
-    // Reseta os campos do formulário do modal
-    const resetForm = () => {
-        setSelectedCarId(null);
-        setDays('');
-        setEditingPedido(null);
-        setTotalValue('0.00');
-    };
-
-    // Atualiza o valor total do pedido com base nos dias e preço diária
-    const updateTotalValue = () => {
-        const daysNum = parseInt(days, 10) || 0;
-        const selectedCar = cars.find(c => c.id === selectedCarId);
-        const newTotal = selectedCar ? (daysNum * selectedCar.preco_diaria).toFixed(2) : '0.00';
-        setTotalValue(newTotal);
-    };
-
-    // Lida com a adição ou atualização de um pedido
-    const handleAddOrUpdatePedido = async () => {
-        if (!selectedCarId || !days.trim()) {
-            Alert.alert('Erro', 'Por favor, selecione um carro e insira o número de dias.');
-            return;
-        }
-
-        const daysNum = parseInt(days, 10);
-        if (isNaN(daysNum) || daysNum <= 0) {
-            Alert.alert('Erro', 'Dias deve ser um número válido e maior que zero.');
-            return;
-        }
-
-        const selectedCar = cars.find(car => car.id === selectedCarId);
-        if (!selectedCar) {
-            Alert.alert('Erro', 'Carro não encontrado.');
-            return;
-        }
-
-        const preco_total = daysNum * selectedCar.preco_diaria;
-
-        if (!user) {
-            Alert.alert('Erro', 'Você precisa estar logado para fazer um pedido.');
-            return;
-        }
-
-        try {
-            const pedidoPayload = {
-                carro_id: selectedCarId,
-                user_id: user.id, // Garante que o user_id é o do usuário logado
-                dias: daysNum,
-                preco_total,
-            };
-
-            if (editingPedido) {
-                // Permite edição apenas se for admin OU o pedido pertencer ao usuário logado
-                if (!isAdmin && editingPedido.user_id !== user.id) {
-                    Alert.alert('Permissão Negada', 'Você só pode editar seus próprios pedidos.');
-                    return;
-                }
-                const { error } = await supabase.from('pedidos').update(pedidoPayload).eq('id', editingPedido.id);
-                if (error) {
-                    console.error('Erro ao atualizar pedido:', error.message);
-                    throw error;
-                }
-            } else {
-                const { error } = await supabase.from('pedidos').insert([pedidoPayload]);
-                if (error) {
-                    console.error('Erro ao inserir pedido:', error.message);
-                    throw error;
-                }
-            }
-
-            Alert.alert('Sucesso', editingPedido ? 'Pedido atualizado!' : 'Pedido adicionado!');
-            resetForm();
-            setModalVisible(false);
-            fetchPedidos(); // Recarrega a lista de pedidos
-        } catch (error: any) {
-            console.error('Erro ao salvar pedido:', error.message);
-            Alert.alert('Erro', 'Não foi possível salvar o pedido: ' + error.message);
-        }
-    };
-
-    // Lida com a edição de um pedido existente
-    const handleEdit = (pedido: Pedidos) => {
-        // Permite editar apenas se for admin OU o pedido pertencer ao usuário logado
-        if (!isAdmin && pedido.user_id !== user?.id) {
-            Alert.alert('Permissão Negada', 'Você só pode editar seus próprios pedidos.');
-            return;
-        }
-        setEditingPedido(pedido);
-        setSelectedCarId(pedido.carro_id);
-        setDays(pedido.dias.toString());
-        setTotalValue(pedido.preco_total.toFixed(2));
-        setModalVisible(true);
-    };
-
-    // Lida com a exclusão de um pedido
-    const handleDelete = async (id: number, pedidoUserId: string) => {
-        // Permite excluir apenas se for admin OU o pedido pertencer ao usuário logado
-        if (!isAdmin && pedidoUserId !== user?.id) {
-            Alert.alert('Permissão Negada', 'Você só pode excluir seus próprios pedidos.');
-            return;
-        }
-
-        try {
-            const { error } = await supabase.from('pedidos').delete().eq('id', id);
-            if (error) throw error;
-            fetchPedidos(); // Recarrega a lista de pedidos
-            Alert.alert('Sucesso', 'Pedido excluído!');
-        } catch (error: any) {
-            console.error('Erro ao excluir pedido:', error.message);
-            Alert.alert('Erro', 'Não foi possível excluir o pedido: ' + error.message);
-        }
-    };
-
-    // Efeito para buscar carros quando o componente é montado
-    useEffect(() => {
-        fetchCars();
-    }, []);
-
-    // Efeito para buscar pedidos quando o usuário ou isAdmin mudam
-    useEffect(() => {
-        // Só tenta buscar pedidos se o usuário estiver carregado
-        if (user) {
-            fetchPedidos();
-        }
-    }, [user, isAdmin]); // Recarrega pedidos quando user ou isAdmin mudam
-
-    // Efeito para atualizar o valor total quando dias, carro selecionado ou lista de carros mudam
-    useEffect(() => {
-        if (cars.length > 0) {
-            if (selectedCarId === null || !cars.some(car => car.id === selectedCarId)) {
-                setSelectedCarId(cars[0].id); // Seleciona o primeiro carro se nada estiver selecionado ou o carro não existir
-            }
-        } else {
-            setSelectedCarId(null);
-        }
-        updateTotalValue();
-    }, [days, selectedCarId, cars]);
-
-    // Renderiza cada item da lista de pedidos
-    const renderPedidoItem = ({ item }: { item: Pedidos }) => {
-        const car = cars.find(c => c.id === item.carro_id);
-        // Determine se o usuário logado tem permissão para editar/excluir este pedido
-        const canModify = isAdmin || (user && item.user_id === user.id);
-
-        return (
-            <View style={styles.card}>
-                {car?.imagem ? (
-                    <Image source={{ uri: car.imagem }} style={styles.image} resizeMode="cover" onError={(e) => console.log('Image load error:', e.nativeEvent.error)} />
-                ) : (
-                    <View style={styles.imagePlaceholder}>
-                        <Feather name="image" size={40} color="#607D8B" /> {/* Cor do ícone */}
-                    </View>
-                )}
-                <View style={styles.info}>
-                    <Text style={styles.modelo}>{car?.modelo || 'Modelo Desconhecido'}</Text>
-                    <Text style={styles.descricao}>{car?.descricao || 'Sem descrição'}</Text>
-                    <Text style={styles.preco}>R$ {car?.preco_diaria ? car.preco_diaria.toFixed(2) : '0.00'}/dia</Text>
-                    <Text style={styles.totalValue}>Total: R$ {item.preco_total.toFixed(2)} ({item.dias} dias)</Text>
-                    {isAdmin && ( // Mostra o solicitante apenas para admins
-                        <Text style={styles.user}>Solicitante: {item.user_display_name || 'Usuário Desconhecido'}</Text>
-                    )}
-                    {canModify && ( // Mostra botões apenas se o usuário tiver permissão
-                        <View style={styles.cardButtons}>
-                            <TouchableOpacity style={styles.editButton} onPress={() => handleEdit(item)}>
-                                <Text style={styles.buttonText}>Editar</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item.id, item.user_id)}>
-                                <Text style={styles.buttonText}>Excluir</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                </View>
-            </View>
-        );
-    };
-
-    const selectedCar = selectedCarId ? cars.find(c => c.id === selectedCarId) : null;
-
+  const renderItem = ({ item }: { item: Treino }) => {
+    const dt = new Date(item.data_hora);
     return (
+<<<<<<< HEAD
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.logoText}>Projeto Guarani</Text>
@@ -430,10 +228,89 @@ export default function TabOneScreen() {
                 <Feather name="plus" size={28} color="#FFF" />
             </TouchableOpacity>
         </SafeAreaView>
+=======
+      <View style={styles.card}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+          <Feather name="calendar" size={18} color="#00C2CB" />
+          <Text style={[styles.modelo, { marginLeft: 8 }]}>{dt.toLocaleString()}</Text>
+        </View>
+        {!!item.local && <Text style={styles.descricao}>Local: {item.local}</Text>}
+        {!!item.descricao && <Text style={styles.descricao}>{item.descricao}</Text>}
+        {/* futuro: botão pra abrir detalhes e marcar presenças */}
+      </View>
+>>>>>>> 3f345bca55994fa30edf5d4ff3102293773c4061
     );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.logoText}>Projeto Guarani</Text>
+        <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
+          <Feather name="log-out" size={24} color="#00C2CB" />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionTitle}>Treinos</Text>
+
+      {(isAdmin || isCoach) && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ marginBottom: 16 }}
+        >
+          <View style={styles.formBox}>
+            <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 10 }}>Novo treino</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Data e hora (AAAA-MM-DD HH:MM)"
+              placeholderTextColor="#A0A0A0"
+              value={dataHora}
+              onChangeText={setDataHora}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Local (opcional)"
+              placeholderTextColor="#A0A0A0"
+              value={local}
+              onChangeText={setLocal}
+            />
+            <TextInput
+              style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+              placeholder="Descrição (opcional)"
+              placeholderTextColor="#A0A0A0"
+              value={descricao}
+              onChangeText={setDescricao}
+              multiline
+            />
+            <TouchableOpacity style={styles.primaryButton} onPress={criarTreino} disabled={criando}>
+              {criando ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Criar treino</Text>}
+            </TouchableOpacity>
+            <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
+              {isAdmin ? 'Você é admin: enxerga todos os treinos.' : 'Você é coach: enxerga apenas os seus treinos.'}
+            </Text>
+          </View>
+        </KeyboardAvoidingView>
+      )}
+
+      {loading ? (
+        <ActivityIndicator size="large" color="#007BFF" style={styles.loadingIndicator} />
+      ) : (
+        <FlatList
+          data={treinos}
+          keyExtractor={(t) => t.id}
+          renderItem={renderItem}
+          style={styles.list}
+          contentContainerStyle={styles.listContentContainer}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>Nenhum treino encontrado.</Text>}
+        />
+      )}
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
+<<<<<<< HEAD
     container: {
         flex: 1,
         backgroundColor: '#18641c', // Fundo principal
@@ -759,3 +636,40 @@ const styles = StyleSheet.create({
         marginTop: 50,
     }
 });
+=======
+  container: { flex: 1, backgroundColor: '#0A1931', paddingHorizontal: 16 },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 20, marginBottom: 10, marginHorizontal: 8,
+  },
+  logoText: {
+    fontSize: 32, fontWeight: '800', color: '#FFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3,
+  },
+  logoutButton: { padding: 8 },
+  sectionTitle: { fontSize: 26, fontWeight: '700', color: '#FFF', textAlign: 'center', marginBottom: 16 },
+  formBox: {
+    backgroundColor: '#1E2F47', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#3A506B',
+  },
+  input: {
+    height: 55, backgroundColor: '#203A4A', borderRadius: 12, paddingHorizontal: 20, marginBottom: 12,
+    color: '#FFF', fontSize: 16, borderWidth: 1, borderColor: '#4A6572',
+  },
+  primaryButton: {
+    backgroundColor: '#007BFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    marginTop: 4, shadowColor: '#007BFF', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+  },
+  buttonText: { color: '#FFF', fontSize: 15, fontWeight: 'bold', textTransform: 'uppercase' },
+  list: { flex: 1, width: '100%' },
+  listContentContainer: { paddingBottom: 40 },
+  card: {
+    backgroundColor: '#1E2F47', borderRadius: 12, marginBottom: 12, padding: 15, elevation: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6,
+    marginHorizontal: 4, borderWidth: 1, borderColor: '#3A506B',
+  },
+  modelo: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  descricao: { fontSize: 14, color: '#B0B0B0', marginTop: 4 },
+  emptyText: { color: '#E0E0E0', textAlign: 'center', marginVertical: 40, fontSize: 16 },
+  loadingIndicator: { marginTop: 50 },
+});
+>>>>>>> 3f345bca55994fa30edf5d4ff3102293773c4061
