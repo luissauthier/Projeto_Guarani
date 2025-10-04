@@ -44,6 +44,8 @@ type Voluntario = {
 
 const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo'];
 const VOL_TIPOS: TipoVol[] = ['assistente','preparador','coord','outro'];
+const getCategoriaAno = (j: Jogador) =>
+  j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
 
 export default function AdminScreen() {
   const { isAdmin } = useAuth();
@@ -107,13 +109,18 @@ export default function AdminScreen() {
     const q = search.trim().toLowerCase();
     return jogadores.filter(j => {
       if (filtroStatus !== 'todos' && j.status !== filtroStatus) return false;
-      if (filtroCategoria !== 'todos' && j.categoria !== filtroCategoria) return false;
+
+      // usa a categoria derivada (coluna OU ano da data_nascimento)
+      if (filtroCategoria !== 'todos') {
+        const cat = getCategoriaAno(j);
+        if (cat !== filtroCategoria) return false;
+      }
+
       if (!q) return true;
-      const blob = [
-        j.nome, j.email, j.telefone,
-        j.categoria?.toString() ?? '', j.status,
-        j.responsavel_nome ?? ''
-      ].join(' ').toLowerCase();
+      const catStr = getCategoriaAno(j)?.toString() ?? '';
+      const blob = [j.nome, j.email ?? '', j.telefone ?? '', catStr, j.status, j.responsavel_nome ?? '']
+        .join(' ')
+        .toLowerCase();
       return blob.includes(q);
     });
   }, [jogadores, search, filtroStatus, filtroCategoria]);
@@ -175,21 +182,16 @@ export default function AdminScreen() {
     if (kind === 'termo') setTermoUri(uri);
   }
 
-  async function uploadIfNeeded(localUri: string | null, defaultPath: string | null) {
+  async function uploadIfNeeded(localUri: string | null, defaultPath: string | null, kind: 'foto'|'doc_frente'|'doc_verso'|'termo') {
     if (!localUri) return defaultPath ?? null;
-    setUploading('foto'); // será trocado pelo chamador
+    setUploading(kind);
     try {
       const res = await fetch(localUri);
       const blob = await res.blob();
       const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-      // CHANGED: decide subpasta por quem chamou
-      // o chamador muda 'uploading' antes de chamar
-      let folder = 'preinscricao';
-      if (uploading === 'termo') folder = 'termos';
+      const folder = kind === 'termo' ? 'termos' : 'preinscricao';
       const path = `${folder}/${filename}`;
-      const { error } = await supabase.storage.from('jogadores').upload(path, blob, {
-        contentType: 'image/jpeg', upsert: false
-      });
+      const { error } = await supabase.storage.from('jogadores').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
       if (error) throw error;
       return path;
     } finally {
@@ -205,16 +207,17 @@ export default function AdminScreen() {
 
       // uploads conforme necessário
       if (fotoUri) setUploading('foto');
-      const foto_path = await uploadIfNeeded(fotoUri, formJog.foto_path ?? null);
+      const foto_path = await uploadIfNeeded(fotoUri, formJog.foto_path ?? null, 'foto');
+
 
       if (docFrenteUri) setUploading('doc_frente');
-      const doc_id_frente_path = await uploadIfNeeded(docFrenteUri, formJog.doc_id_frente_path ?? null);
+      const doc_id_frente_path = await uploadIfNeeded(docFrenteUri, formJog.doc_id_frente_path ?? null, 'doc_frente');
 
       if (docVersoUri) setUploading('doc_verso');
-      const doc_id_verso_path = await uploadIfNeeded(docVersoUri, formJog.doc_id_verso_path ?? null);
+      const doc_id_verso_path = await uploadIfNeeded(docVersoUri, formJog.doc_id_verso_path ?? null, 'doc_verso');
 
       if (termoUri) setUploading('termo');
-      const termo_assinado_path = await uploadIfNeeded(termoUri, formJog.termo_assinado_path ?? null);
+      const termo_assinado_path = await uploadIfNeeded(termoUri, formJog.termo_assinado_path ?? null, 'termo');
 
       const payload: Partial<Jogador> = {
         nome: formJog.nome,
@@ -255,16 +258,35 @@ export default function AdminScreen() {
   }
 
   async function deletarJog(id: string) {
-    Alert.alert('Confirmar', 'Excluir este jogador?', [
+    Alert.alert('Confirmar', 'Excluir este jogador? As presenças vinculadas serão removidas.', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => {
-        const { error } = await supabase.from('jogadores').delete().eq('id', id);
-        if (error) {
-          console.log('delete jogador err:', error);
-          return Alert.alert('Erro', error.message);
-        }
-        await load();
-      }}
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // apaga presenças do jogador (FK)
+            const delPres = await supabase.from('presenca').delete().eq('jogador_id', id);
+            if (delPres.error) {
+              console.log('delete presenca (jogador) err:', delPres.error);
+              return Alert.alert('Erro ao excluir presenças', delPres.error.message);
+            }
+
+            // apaga o jogador
+            const delJog = await supabase.from('jogadores').delete().eq('id', id);
+            if (delJog.error) {
+              console.log('delete jogador err:', delJog.error);
+              return Alert.alert('Erro ao excluir jogador', delJog.error.message);
+            }
+
+            await load();
+            Alert.alert('Sucesso', 'Jogador excluído.');
+          } catch (e: any) {
+            console.log('delete jogador catch:', e);
+            Alert.alert('Erro inesperado', e?.message ?? 'Falha ao excluir.');
+          }
+        },
+      },
     ]);
   }
 
@@ -379,14 +401,17 @@ export default function AdminScreen() {
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>Categoria (ano)</Text>
-              <Picker
-                selectedValue={filtroCategoria === 'todos' ? 'todos' : String(filtroCategoria)}
-                onValueChange={(v)=> setFiltroCategoria(v === 'todos' ? 'todos' : Number(v))}
-                style={styles.picker}
-              >
-                <Picker.Item label="Todas" value="todos" />
-                {anosDisponiveis.map(ano => <Picker.Item key={ano} label={String(ano)} value={String(ano)} />)}
-              </Picker>
+              <TextInput
+                style={styles.input}
+                placeholder="Ex.: 2010"
+                placeholderTextColor="#A0A0A0"
+                keyboardType="numeric"
+                value={filtroCategoria === 'todos' ? '' : String(filtroCategoria)}
+                onChangeText={(v) => {
+                  const n = Number(v);
+                  setFiltroCategoria(!v ? 'todos' : isNaN(n) ? 'todos' : n);
+                }}
+              />
             </View>
           </View>
         ) : (
@@ -433,56 +458,93 @@ export default function AdminScreen() {
         )}
       </View>
 
-      {/* LISTAS */}
+      {/* LISTAS EM TABELA */}
       {loading ? (
         <ActivityIndicator color="#007BFF" style={{ marginTop: 40 }} />
-      ) : tab==='jogadores' ? (
-        <FlatList
-          data={jogadoresFiltrados}
-          keyExtractor={(i)=>i.id}
-          renderItem={({item})=>(
-            <View style={styles.card}>
-              <Text style={styles.title}>{item.nome}</Text>
-              <Text style={styles.line}>Nasc.: {item.data_nascimento ? new Date(item.data_nascimento).toLocaleDateString() : '-'}</Text>
-              <Text style={styles.line}>Categoria (ano): {item.categoria ?? (item.data_nascimento ? new Date(item.data_nascimento).getFullYear() : '-')}</Text>
-              <Text style={styles.line}>Status: {item.status}</Text>
-              {!!item.telefone && <Text style={styles.line}>Tel: {item.telefone}</Text>}
-              <View style={styles.rowButtons}>
-                <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
-                  <Text style={styles.btnText}>Editar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.btnDanger} onPress={() => deletarJog(item.id)}>
-                  <Text style={styles.btnText}>Excluir</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
-        />
+      ) : tab === 'jogadores' ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
+          <View style={{ width: 180 + 120 + 120 + 140 + 160 + 240 + 220 + 180 }}>
+            <FlatList
+              data={jogadoresFiltrados}
+              keyExtractor={(i) => i.id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              ListHeaderComponent={
+                <View style={tableStyles.headerRow}>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Nasc.</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Categoria</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 140 }]}>Status</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 240 }]}>E-mail</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Responsável</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                </View>
+              }
+              renderItem={({ item, index }) => (
+                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                  <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>
+                    {item.data_nascimento ? new Date(item.data_nascimento).toLocaleDateString() : '-'}
+                  </Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>
+                    {getCategoriaAno(item) ?? '-'}
+                  </Text>
+                  <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
+                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
+                      <Text style={styles.btnText}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnDanger} onPress={() => deletarJog(item.id)}>
+                      <Text style={styles.btnText}>Excluir</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
+            />
+          </View>
+        </ScrollView>
       ) : (
-        <FlatList
-          data={voluntariosFiltrados}
-          keyExtractor={(i)=>i.id}
-          renderItem={({item})=>(
-            <View style={styles.card}>
-              <Text style={styles.title}>{item.nome}</Text>
-              <Text style={styles.line}>Tipo: {item.tipo}</Text>
-              <Text style={styles.line}>Status: {item.ativo ? 'ativo' : 'inativo'}</Text>
-              {!!item.telefone && <Text style={styles.line}>Tel: {item.telefone}</Text>}
-              <View style={styles.rowButtons}>
-                <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol(item)}>
-                  <Text style={styles.btnText}>Editar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.btnDanger} onPress={() => deletarVol(item.id)}>
-                  <Text style={styles.btnText}>Excluir</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-          contentContainerStyle={{ paddingBottom: 40 }}
-          ListEmptyComponent={<Text style={styles.empty}>Nenhum voluntário encontrado.</Text>}
-        />
+        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
+          <View style={{ width: 220 + 160 + 120 + 160 + 260 + 180 }}>
+            <FlatList
+              data={voluntariosFiltrados}
+              keyExtractor={(i) => i.id}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              ListHeaderComponent={
+                <View style={tableStyles.headerRow}>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Nome</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Tipo</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Status</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 260 }]}>E-mail</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                </View>
+              }
+              renderItem={({ item, index }) => (
+                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]}>{item.tipo}</Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol(item)}>
+                      <Text style={styles.btnText}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnDanger} onPress={() => deletarVol(item.id)}>
+                      <Text style={styles.btnText}>Excluir</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.empty}>Nenhum voluntário encontrado.</Text>}
+            />
+          </View>
+        </ScrollView>
       )}
 
       {/* MODAL JOGADOR */}
@@ -587,11 +649,113 @@ export default function AdminScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* MODAL VOLUNTÁRIO (sem mudanças relevantes) */}
-      {/* ... mantém o que você já tem (com Pickers para tipo/status) ... */}
+      <Modal visible={modalVol} animationType="slide" onRequestClose={() => setModalVol(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <Text style={styles.h1}>{editVol ? 'Editar Voluntário' : 'Cadastrar Voluntário'}</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Nome completo"
+              placeholderTextColor="#A0A0A0"
+              value={formVol.nome ?? ''}
+              onChangeText={(t) => setFormVol((s) => ({ ...s, nome: t }))}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Telefone"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="phone-pad"
+              value={formVol.telefone ?? ''}
+              onChangeText={(t) => setFormVol((s) => ({ ...s, telefone: t }))}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="E-mail"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={formVol.email ?? ''}
+              onChangeText={(t) => setFormVol((s) => ({ ...s, email: t }))}
+            />
+
+            <Text style={styles.label}>Tipo</Text>
+            <Picker
+              selectedValue={(formVol.tipo as TipoVol) ?? 'outro'}
+              onValueChange={(v) => setFormVol((s) => ({ ...s, tipo: v as TipoVol }))}
+              style={styles.picker}
+            >
+              {VOL_TIPOS.map((t) => (
+                <Picker.Item key={t} label={t} value={t} />
+              ))}
+            </Picker>
+
+            <Text style={styles.label}>Status</Text>
+            <Picker
+              selectedValue={formVol.ativo ?? true ? 'ativo' : 'inativo'}
+              onValueChange={(v) => setFormVol((s) => ({ ...s, ativo: v === 'ativo' }))}
+              style={styles.picker}
+            >
+              <Picker.Item label="Ativo" value="ativo" />
+              <Picker.Item label="Inativo" value="inativo" />
+            </Picker>
+
+            <TextInput
+              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+              multiline
+              numberOfLines={4}
+              placeholder="Observações"
+              placeholderTextColor="#A0A0A0"
+              value={formVol.observacoes ?? ''}
+              onChangeText={(t) => setFormVol((s) => ({ ...s, observacoes: t }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={saveVol}
+                disabled={savingVol}
+              >
+                {savingVol ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalVol(false)}>
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const tableStyles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    backgroundColor: '#203A4A',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderColor: '#3A506B',
+    borderWidth: 1,
+  },
+  bodyRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1E2F47',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#3A506B',
+  },
+  cell: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    color: '#E0E0E0',
+  },
+  headerCell: {
+    fontWeight: '700',
+    color: '#FFF',
+  },
+});
 
 const styles = StyleSheet.create({
   container: { flex:1, backgroundColor:'#0A1931', paddingHorizontal:16 },

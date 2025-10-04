@@ -34,6 +34,7 @@ export default function TreinosScreen() {
 
   async function handleSignOut() {
           const { error } = await supabase.auth.signOut();
+          setAuth(null);
           if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
         }
 
@@ -73,15 +74,19 @@ export default function TreinosScreen() {
   const [searchJog, setSearchJog] = useState('');
 
   async function loadJogadoresAtivos() {
-    const { data, error } = await supabase
-      .from('jogadores')
+    const q = supabase.from('jogadores')
       .select('id, nome, categoria, status')
       .eq('status', 'ativo')
       .order('categoria', { ascending: false });
+
+    const { data, error } = await q;
+    console.log('[loadJogadoresAtivos] error:', error, 'rows:', data?.length);
     if (error) {
       Alert.alert('Erro', error.message);
       setJogadores([]);
-    } else setJogadores((data ?? []) as any);
+    } else {
+      setJogadores((data ?? []) as any);
+    }
   }
 
   function openCreate() {
@@ -108,8 +113,10 @@ export default function TreinosScreen() {
     let list = jogadores;
     const yf = yearFrom ? Number(yearFrom) : null;
     const yt = yearTo ? Number(yearTo) : null;
-    if (yf) list = list.filter(j => !j.categoria || j.categoria >= yf);
-    if (yt) list = list.filter(j => !j.categoria || j.categoria <= yt);
+    // if (yf) list = list.filter(j => !j.categoria || j.categoria >= yf);
+    // if (yt) list = list.filter(j => !j.categoria || j.categoria <= yt);
+    if (yf) list = list.filter(j => j.categoria && j.categoria >= yf);
+    if (yt) list = list.filter(j => j.categoria && j.categoria <= yt);
     const q = searchJog.trim().toLowerCase();
     if (q) list = list.filter(j => j.nome.toLowerCase().includes(q) || String(j.categoria??'').includes(q));
     return list;
@@ -119,53 +126,151 @@ export default function TreinosScreen() {
     setSel(s => ({ ...s, [id]: !s[id] }));
   }
 
+  function toISOForPg(input: string) {
+    const s = input.trim();
+
+    // AAAA-MM-DD  → completa com 00:00:00
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      return `${s}T00:00:00`;
+    }
+
+    // AAAA-MM-DD HH:MM  ou  AAAA-MM-DDTHH:MM → acrescenta :00
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(s)) {
+      return s.replace(' ', 'T') + ':00';
+    }
+
+    // AAAA-MM-DD HH:MM:SS  ou  AAAA-MM-DDTHH:MM:SS → normaliza o separador
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(s)) {
+      return s.replace(' ', 'T');
+    }
+
+    // formato inválido
+    return null;
+  }
+
+  // Aceita "AAAA-MM-DD" | "AAAA-MM-DD HH:MM" | "AAAA-MM-DD HH:MM:SS"
+  // Retorna "AAAA-MM-DDTHH:MM:SS±HH:MM" (ex.: -03:00)
+  function toPgTimestamptzWithOffset(input: string) {
+    const raw = input.trim();
+    if (!raw) return null;
+
+    // normaliza espaço para 'T'
+    let base = raw.replace(' ', 'T');
+
+    // completa para HH:MM:SS
+    if (/^\d{4}-\d{2}-\d{2}$/.test(base)) base += 'T00:00:00';
+    else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(base)) base += ':00';
+    else if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(base)) return null;
+
+    // calcula offset local
+    const d = new Date(base);                // interpretado como local
+    if (isNaN(d.getTime())) return null;
+    const offMin = -d.getTimezoneOffset();   // minutos a leste do UTC
+    const sign = offMin >= 0 ? '+' : '-';
+    const hh = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
+    const mm = String(Math.abs(offMin) % 60).padStart(2, '0');
+
+    return `${base}${sign}${hh}:${mm}`;
+  }
+
   async function save() {
-    if (!user?.id) return Alert.alert('Erro', 'Usuário não identificado.');
-    if (!dataHora.trim()) return Alert.alert('Atenção', 'Informe data e hora (AAAA-MM-DD HH:MM).');
+    if (saving) return; // evita toque duplo
+    if (!user?.id) {
+      Alert.alert('Erro', 'Usuário não identificado.');
+      return;
+    }
+    if (!dataHora.trim()) {
+      Alert.alert('Atenção', 'Informe data e hora (AAAA-MM-DD ou AAAA-MM-DD HH:MM).');
+      return;
+    }
+
+    // monta timestamptz com offset local (compatível com coluna timestamptz)
+    const ts = toPgTimestamptzWithOffset(dataHora);
+    if (!ts) {
+      Alert.alert('Atenção', 'Formato inválido. Use AAAA-MM-DD ou AAAA-MM-DD HH:MM.');
+      return;
+    }
 
     try {
       setSaving(true);
-      const iso = new Date(dataHora.replace(' ', 'T') + ':00').toISOString();
 
-      let treinoId = editTreino?.id;
       if (editTreino) {
-        // editar
-        const { error } = await supabase.from('treinos').update({
-          data_hora: iso,
+        // ===== UPDATE =====
+        console.log('[treinos.update] ts->', ts, 'editTreino.id->', editTreino!.id);
+
+        const { data: rows, error: upErr } = await supabase
+        .from('treinos')
+        .update({
+          data_hora: ts,
           local: local || null,
           descricao: descricao || null,
           atualizado_em: new Date().toISOString(),
-        }).eq('id', editTreino.id);
-        if (error) throw error;
-      } else {
-        // criar
-        const { data, error } = await supabase.from('treinos').insert({
-          data_hora: iso,
-          treinador_id: user.id,
-          local: local || null,
-          descricao: descricao || null,
-        }).select('id').single();
-        if (error) throw error;
-        treinoId = data.id;
+        })
+        .eq('id', editTreino.id)
+        .select('*'); // <- SEM .single()
+
+      if (upErr) throw upErr;
+      if (!rows || rows.length === 0) {
+        // RLS/Policy não permitiu atingir a linha OU id não existe
+        Alert.alert('Sem permissão', 'Não foi possível atualizar este treino (RLS).');
+        return;
       }
 
-      // presenças (só criamos para selecionados)
-      const selecionados = Object.keys(sel).filter(id => sel[id]);
-      if (!editTreino && selecionados.length > 0 && treinoId) {
-        const rows = selecionados.map(jid => ({
-          treino_id: treinoId,
-          jogador_id: jid,
-          status: 'presente'
-        }));
-        const { error } = await supabase.from('presenca').insert(rows);
-        if (error) throw error;
-      }
+      const atualizado = rows[0];
 
+      // fecha modal e aplica na lista imediatamente
       setModal(false);
+      setTreinos(prev =>
+        prev
+          .map(t => (t.id === atualizado.id ? { ...t, ...atualizado } : t))
+          .sort((a,b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime())
+      );
+
+      // sincroniza com o servidor (opcional)
+      await loadTreinos();
+      Alert.alert('Sucesso', 'Treino atualizado.');
+      } else {
+        // ===== INSERT =====
+        const { data: novo, error } = await supabase
+          .from('treinos')
+          .insert({
+            data_hora: ts,
+            local: local || null,
+            descricao: descricao || null,
+            // treinador_id: default no banco = auth.uid()
+          })
+          .select('*')
+          .single();
+
+        if (error) throw error;
+
+        // fecha modal e coloca o novo treino na lista **já**
+        setModal(false);
+        setTreinos((prev) =>
+          [...prev, novo!].sort(
+            (a, b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime()
+          )
+        );
+
+        // presenças apenas na criação
+        const selecionados = Object.keys(sel).filter((id) => sel[id]);
+        if (selecionados.length > 0) {
+          const rows = selecionados.map((jid) => ({
+            treino_id: novo!.id,
+            jogador_id: jid,
+            status: 'presente',
+          }));
+          const { error: errPres } = await supabase.from('presenca').insert(rows);
+          if (errPres) throw errPres;
+        }
+      }
+
+      // por segurança, sincroniza com o servidor (UI já está atualizada)
       await loadTreinos();
       Alert.alert('Sucesso', editTreino ? 'Treino atualizado.' : 'Treino criado.');
     } catch (e: any) {
-      Alert.alert('Erro', e.message);
+      console.log('[save] erro:', e);
+      Alert.alert('Erro', e?.message ?? 'Falha ao salvar treino.');
     } finally {
       setSaving(false);
     }
@@ -173,12 +278,34 @@ export default function TreinosScreen() {
 
   async function deletarTreino(id: string) {
     Alert.alert('Confirmar', 'Excluir treino?', [
-      { text:'Cancelar', style:'cancel' },
-      { text:'Excluir', style:'destructive', onPress: async ()=>{
-        const { error } = await supabase.from('treinos').delete().eq('id', id);
-        if (error) return Alert.alert('Erro', error.message);
-        await loadTreinos();
-      }}
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // apaga presenças dependentes (FK)
+            const delPres = await supabase.from('presenca').delete().eq('treino_id', id);
+            if (delPres.error) {
+              console.log('delete presenca (treino) err:', delPres.error);
+              return Alert.alert('Erro ao excluir presenças', delPres.error.message);
+            }
+
+            // apaga o treino
+            const delTreino = await supabase.from('treinos').delete().eq('id', id);
+            if (delTreino.error) {
+              console.log('delete treino err:', delTreino.error);
+              return Alert.alert('Erro ao excluir treino', delTreino.error.message);
+            }
+
+            await loadTreinos();
+            Alert.alert('Sucesso', 'Treino excluído.');
+          } catch (e: any) {
+            console.log('delete treino catch:', e);
+            Alert.alert('Erro inesperado', e?.message ?? 'Falha ao excluir.');
+          }
+        },
+      },
     ]);
   }
 
@@ -223,6 +350,7 @@ export default function TreinosScreen() {
       ) : (
         <FlatList
           data={treinos}
+          extraData={treinos} 
           keyExtractor={(t)=>t.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 40 }}
@@ -244,30 +372,28 @@ export default function TreinosScreen() {
               placeholder="Descrição/atividades" placeholderTextColor="#A0A0A0"
               value={descricao} onChangeText={setDescricao} />
 
-            {/* SELEÇÃO DE JOGADORES (só na criação) */}
-            {!editTreino && (
-              <View style={styles.box}>
-                <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Selecionar jogadores (ativos)</Text>
-                <View style={{ flexDirection:'row', gap:10 }}>
-                  <TextInput style={[styles.input, { flex:1 }]} placeholder="Ano de (ex: 2008)" placeholderTextColor="#A0A0A0"
-                    value={yearFrom} onChangeText={setYearFrom} keyboardType="numeric" />
-                  <TextInput style={[styles.input, { flex:1 }]} placeholder="Ano até (ex: 2015)" placeholderTextColor="#A0A0A0"
-                    value={yearTo} onChangeText={setYearTo} keyboardType="numeric" />
-                </View>
-                <TextInput style={styles.input} placeholder="Pesquisar nome/ano" placeholderTextColor="#A0A0A0"
-                  value={searchJog} onChangeText={setSearchJog} />
-
-                {jogadoresFiltrados.map(j => (
-                  <View key={j.id} style={styles.rowSel}>
-                    <Text style={{ color:'#fff', flex:1 }}>{j.nome} {j.categoria ? `(${j.categoria})` : ''}</Text>
-                    <Switch
-                      value={!!sel[j.id]}
-                      onValueChange={()=>toggleSel(j.id)}
-                    />
-                  </View>
-                ))}
+            {/* SELEÇÃO DE JOGADORES*/}
+            <View style={styles.box}>
+              <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Selecionar jogadores (ativos)</Text>
+              <View style={{ flexDirection:'row', gap:10 }}>
+                <TextInput style={[styles.input, { flex:1 }]} placeholder="Ano de (ex: 2008)" placeholderTextColor="#A0A0A0"
+                  value={yearFrom} onChangeText={setYearFrom} keyboardType="numeric" />
+                <TextInput style={[styles.input, { flex:1 }]} placeholder="Ano até (ex: 2015)" placeholderTextColor="#A0A0A0"
+                  value={yearTo} onChangeText={setYearTo} keyboardType="numeric" />
               </View>
-            )}
+              <TextInput style={styles.input} placeholder="Pesquisar nome/ano" placeholderTextColor="#A0A0A0"
+                value={searchJog} onChangeText={setSearchJog} />
+
+              {jogadoresFiltrados.map(j => (
+                <View key={j.id} style={styles.rowSel}>
+                  <Text style={{ color:'#fff', flex:1 }}>{j.nome} {j.categoria ? `(${j.categoria})` : ''}</Text>
+                  <Switch
+                    value={!!sel[j.id]}
+                    onValueChange={()=>toggleSel(j.id)}
+                  />
+                </View>
+              ))}
+            </View>
 
             <View style={{ flexDirection:'row', gap:10, marginTop:8 }}>
               <TouchableOpacity style={[styles.btnPrimary, { flex:1 }]} onPress={save} disabled={saving}>
