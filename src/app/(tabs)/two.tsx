@@ -10,6 +10,33 @@ import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 
+/* ============== Helpers (fora do componente, não usam hooks) ============== */
+function debugSbError(ctx: string, error: any) {
+  const msg = [
+    `⛔ ${ctx}`,
+    error?.message && `message: ${error.message}`,
+    error?.code && `code: ${error.code}`,
+    error?.details && `details: ${error.details}`,
+    error?.hint && `hint: ${error.hint}`,
+  ].filter(Boolean).join('\n');
+  console.log('[SUPABASE ERROR]', ctx, error);
+  return msg;
+}
+
+async function debugLogSession() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    console.log('[SESSION]', {
+      hasSession: !!data?.session,
+      uid: data?.session?.user?.id,
+      email: data?.session?.user?.email,
+    });
+  } catch (e) {
+    console.log('[SESSION][ERR]', e);
+  }
+}
+
+/* ============== Tipos ============== */
 type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
 type TipoVol = 'assistente' | 'preparador' | 'coord' | 'outro';
 
@@ -47,6 +74,15 @@ const VOL_TIPOS: TipoVol[] = ['assistente','preparador','coord','outro'];
 const getCategoriaAno = (j: Jogador) =>
   j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
 
+// formata DATE do Postgres ("YYYY-MM-DD") sem aplicar fuso
+const formatPgDateOnly = (s?: string | null) => {
+  if (!s) return '-';
+  const [y, m, d] = s.split('-');
+  if (!y || !m || !d) return s;
+  return `${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`;
+};
+
+/* ============== Componente ============== */
 export default function AdminScreen() {
   const { isAdmin } = useAuth();
   useEffect(() => {
@@ -56,6 +92,8 @@ export default function AdminScreen() {
     }
   }, [isAdmin]);
   if (!isAdmin) return null;
+
+  const [debugMsg, setDebugMsg] = useState<string | null>(null);
 
   const [tab, setTab] = useState<'jogadores' | 'voluntarios'>('jogadores');
 
@@ -79,13 +117,12 @@ export default function AdminScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    // CHANGED: seleção explícita garante que 'categoria' venha
     const { data: jog, error: ej } = await supabase
       .from('jogadores')
       .select('id,nome,data_nascimento,categoria,telefone,email,responsavel_nome,foto_path,doc_id_frente_path,doc_id_verso_path,termo_assinado_path,status,created_at,atualizado_em')
       .order('created_at', { ascending: false });
     if (ej) {
-      console.log('DEL jogadores err:', ej);
+      console.log('jogadores err:', ej);
       Alert.alert('Erro', ej.message);
       setJogadores([]);
     } else {
@@ -109,13 +146,10 @@ export default function AdminScreen() {
     const q = search.trim().toLowerCase();
     return jogadores.filter(j => {
       if (filtroStatus !== 'todos' && j.status !== filtroStatus) return false;
-
-      // usa a categoria derivada (coluna OU ano da data_nascimento)
       if (filtroCategoria !== 'todos') {
         const cat = getCategoriaAno(j);
         if (cat !== filtroCategoria) return false;
       }
-
       if (!q) return true;
       const catStr = getCategoriaAno(j)?.toString() ?? '';
       const blob = [j.nome, j.email ?? '', j.telefone ?? '', catStr, j.status, j.responsavel_nome ?? '']
@@ -143,7 +177,7 @@ export default function AdminScreen() {
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
 
-  // CHANGED: Estados para uploads (foto/doc/termo) + preview
+  // Uploads (foto/doc/termo)
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [docFrenteUri, setDocFrenteUri] = useState<string | null>(null);
   const [docVersoUri, setDocVersoUri] = useState<string | null>(null);
@@ -153,18 +187,9 @@ export default function AdminScreen() {
   const [savingJog, setSavingJog] = useState(false);
 
   function openEditJog(j?: Jogador) {
-    if (j) {
-      setEditJog(j);
-      setFormJog(j);
-    } else {
-      setEditJog(null);
-      setFormJog({ status: 'pre_inscrito' as StatusJog });
-    }
-    // reset uploads
-    setFotoUri(null);
-    setDocFrenteUri(null);
-    setDocVersoUri(null);
-    setTermoUri(null);
+    if (j) { setEditJog(j); setFormJog(j); }
+    else { setEditJog(null); setFormJog({ status: 'pre_inscrito' as StatusJog }); }
+    setFotoUri(null); setDocFrenteUri(null); setDocVersoUri(null); setTermoUri(null);
     setModalJog(true);
   }
 
@@ -205,18 +230,9 @@ export default function AdminScreen() {
     try {
       setSavingJog(true);
 
-      // uploads conforme necessário
-      if (fotoUri) setUploading('foto');
       const foto_path = await uploadIfNeeded(fotoUri, formJog.foto_path ?? null, 'foto');
-
-
-      if (docFrenteUri) setUploading('doc_frente');
       const doc_id_frente_path = await uploadIfNeeded(docFrenteUri, formJog.doc_id_frente_path ?? null, 'doc_frente');
-
-      if (docVersoUri) setUploading('doc_verso');
       const doc_id_verso_path = await uploadIfNeeded(docVersoUri, formJog.doc_id_verso_path ?? null, 'doc_verso');
-
-      if (termoUri) setUploading('termo');
       const termo_assinado_path = await uploadIfNeeded(termoUri, formJog.termo_assinado_path ?? null, 'termo');
 
       const payload: Partial<Jogador> = {
@@ -257,40 +273,36 @@ export default function AdminScreen() {
     }
   }
 
+  /* ================= Excluir JOGADOR (direto com logs) ================= */
   async function deletarJog(id: string) {
-    Alert.alert('Confirmar', 'Excluir este jogador? As presenças vinculadas serão removidas.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            // apaga presenças do jogador (FK)
-            const delPres = await supabase.from('presenca').delete().eq('jogador_id', id);
-            if (delPres.error) {
-              console.log('delete presenca (jogador) err:', delPres.error);
-              return Alert.alert('Erro ao excluir presenças', delPres.error.message);
-            }
+    console.log('[UI] deletarJog start', id);
+    await debugLogSession();
+    try {
+      const delPres = await supabase.from('presenca').delete().eq('jogador_id', id).select('id');
+      if (delPres.error) {
+        const msg = debugSbError('delete presenca(jogador)', delPres.error);
+        setDebugMsg(msg);
+        return;
+      }
+      console.log('[DEL presenca count]', delPres.data?.length ?? 0);
 
-            // apaga o jogador
-            const delJog = await supabase.from('jogadores').delete().eq('id', id);
-            if (delJog.error) {
-              console.log('delete jogador err:', delJog.error);
-              return Alert.alert('Erro ao excluir jogador', delJog.error.message);
-            }
+      const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
+      if (delJog.error) {
+        const msg = debugSbError('delete jogador', delJog.error);
+        setDebugMsg(msg);
+        return;
+      }
+      console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
 
-            await load();
-            Alert.alert('Sucesso', 'Jogador excluído.');
-          } catch (e: any) {
-            console.log('delete jogador catch:', e);
-            Alert.alert('Erro inesperado', e?.message ?? 'Falha ao excluir.');
-          }
-        },
-      },
-    ]);
+      await load();
+      setDebugMsg('✅ Jogador excluído com sucesso.');
+    } catch (e: any) {
+      const msg = debugSbError('delete jogador catch', e);
+      setDebugMsg(msg);
+    }
   }
 
-  // ====== VOLUNTÁRIOS (sem mudanças de lógica de upload) ======
+  // ====== VOLUNTÁRIOS ======
   const [modalVol, setModalVol] = useState(false);
   const [editVol, setEditVol] = useState<Voluntario | null>(null);
   const [formVol, setFormVol] = useState<Partial<Voluntario>>({});
@@ -334,18 +346,25 @@ export default function AdminScreen() {
     }
   }
 
+  /* ================= Excluir VOLUNTÁRIO (direto com logs) ================= */
   async function deletarVol(id: string) {
-    Alert.alert('Confirmar', 'Excluir este voluntário?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: async () => {
-        const { error } = await supabase.from('voluntarios').delete().eq('id', id);
-        if (error) {
-          console.log('delete voluntario err:', error);
-          return Alert.alert('Erro', error.message);
-        }
-        await load();
-      }}
-    ]);
+    console.log('[UI] deletarVol start', id);
+    await debugLogSession();
+    try {
+      const delVol = await supabase.from('voluntarios').delete().eq('id', id).select('id');
+      if (delVol.error) {
+        const msg = debugSbError('delete voluntario', delVol.error);
+        setDebugMsg(msg);
+        return;
+      }
+      console.log('[DEL voluntarios count]', delVol.data?.length ?? 0);
+
+      await load();
+      setDebugMsg('✅ Voluntário excluído com sucesso.');
+    } catch (e: any) {
+      const msg = debugSbError('delete voluntario catch', e);
+      setDebugMsg(msg);
+    }
   }
 
   // UI helpers
@@ -364,6 +383,14 @@ export default function AdminScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}><Text style={styles.logo}>Projeto Guarani</Text></View>
+
+      {/* Banner de debug */}
+      {debugMsg ? (
+        <View style={{ backgroundColor: '#FFCF66', padding: 8, borderRadius: 8, marginBottom: 8 }}>
+          <Text style={{ color: '#000' }}>{debugMsg}</Text>
+        </View>
+      ) : null}
+
       <Text style={styles.h1}>Administrativo</Text>
 
       {/* SEGMENT */}
@@ -390,11 +417,7 @@ export default function AdminScreen() {
           <View style={styles.row}>
             <View style={styles.col}>
               <Text style={styles.label}>Status</Text>
-              <Picker
-                selectedValue={filtroStatus}
-                onValueChange={(v)=>setFiltroStatus(v as any)}
-                style={styles.picker}
-              >
+              <Picker selectedValue={filtroStatus} onValueChange={(v)=>setFiltroStatus(v as any)} style={styles.picker}>
                 <Picker.Item label="Todos" value="todos" />
                 {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
               </Picker>
@@ -418,22 +441,14 @@ export default function AdminScreen() {
           <View style={styles.row}>
             <View style={styles.col}>
               <Text style={styles.label}>Tipo</Text>
-              <Picker
-                selectedValue={filtroTipoVol}
-                onValueChange={(v)=>setFiltroTipoVol(v as any)}
-                style={styles.picker}
-              >
+              <Picker selectedValue={filtroTipoVol} onValueChange={(v)=>setFiltroTipoVol(v as any)} style={styles.picker}>
                 <Picker.Item label="Todos" value="todos" />
                 {VOL_TIPOS.map(t => <Picker.Item key={t} label={t} value={t} />)}
               </Picker>
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>Status</Text>
-              <Picker
-                selectedValue={filtroAtivo}
-                onValueChange={(v)=>setFiltroAtivo(v as any)}
-                style={styles.picker}
-              >
+              <Picker selectedValue={filtroAtivo} onValueChange={(v)=>setFiltroAtivo(v as any)} style={styles.picker}>
                 <Picker.Item label="Todos" value="todos" />
                 <Picker.Item label="Ativos" value="ativos" />
                 <Picker.Item label="Inativos" value="inativos" />
@@ -484,11 +499,9 @@ export default function AdminScreen() {
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
                   <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>
-                    {item.data_nascimento ? new Date(item.data_nascimento).toLocaleDateString() : '-'}
+                    {formatPgDateOnly(item.data_nascimento)}
                   </Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>
-                    {getCategoriaAno(item) ?? '-'}
-                  </Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
@@ -497,7 +510,11 @@ export default function AdminScreen() {
                     <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
                       <Text style={styles.btnText}>Editar</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.btnDanger} onPress={() => deletarJog(item.id)}>
+                    <TouchableOpacity
+                      style={styles.btnDanger}
+                      onPress={() => deletarJog(item.id)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
                       <Text style={styles.btnText}>Excluir</Text>
                     </TouchableOpacity>
                   </View>
@@ -535,7 +552,11 @@ export default function AdminScreen() {
                     <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol(item)}>
                       <Text style={styles.btnText}>Editar</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.btnDanger} onPress={() => deletarVol(item.id)}>
+                    <TouchableOpacity
+                      style={styles.btnDanger}
+                      onPress={() => deletarVol(item.id)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
                       <Text style={styles.btnText}>Excluir</Text>
                     </TouchableOpacity>
                   </View>
@@ -558,7 +579,6 @@ export default function AdminScreen() {
             <TextInput style={styles.input} placeholder="Data nasc. (AAAA-MM-DD)" placeholderTextColor="#A0A0A0"
               value={formJog.data_nascimento ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, data_nascimento:t}))} />
 
-            {/* categoria apenas exibida */}
             <Text style={{ color:'#B0B0B0', marginBottom:10 }}>
               Categoria (ano): {formJog.data_nascimento ? new Date(formJog.data_nascimento).getFullYear() : (editJog?.categoria ?? '-')}
             </Text>
@@ -570,14 +590,12 @@ export default function AdminScreen() {
             <TextInput style={styles.input} placeholder="Responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
               value={formJog.responsavel_nome ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, responsavel_nome:t}))} />
 
-            {/* CHANGED: Foto do jogador */}
             <View style={styles.box}>
               <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Foto do jogador</Text>
               <TouchableOpacity style={styles.btnNeutral} onPress={()=>pick('foto')}>
                 <Feather name="image" size={18} color="#fff" />
                 <Text style={styles.btnText}>  Selecionar imagem</Text>
               </TouchableOpacity>
-              {/* preview: novo upload OU existente do banco */}
               {fotoUri
                 ? <Image source={{ uri: fotoUri }} style={styles.preview} />
                 : (formJog.foto_path ? <Image source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.foto_path).data.publicUrl }} style={styles.preview} /> : null)
@@ -585,7 +603,6 @@ export default function AdminScreen() {
               {uploading==='foto' && <ActivityIndicator color="#00C2CB" />}
             </View>
 
-            {/* CHANGED: Documento identidade (frente/verso) */}
             <View style={styles.box}>
               <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Documento de identidade</Text>
               <View style={{ flexDirection:'row', gap:10 }}>
@@ -613,7 +630,6 @@ export default function AdminScreen() {
               {(uploading==='doc_frente' || uploading==='doc_verso') && <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />}
             </View>
 
-            {/* Termo assinado */}
             <View style={styles.box}>
               <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Termo assinado</Text>
               <TouchableOpacity style={styles.btnNeutral} onPress={()=>pick('termo')}>
@@ -627,7 +643,6 @@ export default function AdminScreen() {
               {uploading==='termo' && <ActivityIndicator color="#00C2CB" />}
             </View>
 
-            {/* STATUS via Picker */}
             <Text style={styles.label}>Status</Text>
             <Picker
               selectedValue={(formJog.status as StatusJog) ?? 'pre_inscrito'}
