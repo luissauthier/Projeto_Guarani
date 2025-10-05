@@ -275,32 +275,60 @@ export default function AdminScreen() {
 
   /* ================= Excluir JOGADOR (direto com logs) ================= */
   async function deletarJog(id: string) {
-    console.log('[UI] deletarJog start', id);
-    await debugLogSession();
-    try {
-      const delPres = await supabase.from('presenca').delete().eq('jogador_id', id).select('id');
-      if (delPres.error) {
-        const msg = debugSbError('delete presenca(jogador)', delPres.error);
-        setDebugMsg(msg);
-        return;
-      }
-      console.log('[DEL presenca count]', delPres.data?.length ?? 0);
+  console.log('[UI] deletarJog start', id);
+  await debugLogSession();
 
-      const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
-      if (delJog.error) {
-        const msg = debugSbError('delete jogador', delJog.error);
-        setDebugMsg(msg);
-        return;
-      }
-      console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
+  try {
+    // 1. Buscar o nome do jogador para confirmar a exclusão
+    const { data: jogador, error: jogadorError } = await supabase
+      .from('jogadores')
+      .select('nome') // Altere 'nome' se o nome da sua coluna for diferente
+      .eq('id', id)
+      .single(); // .single() para obter um único objeto, não um array
 
-      await load();
-      setDebugMsg('✅ Jogador excluído com sucesso.');
-    } catch (e: any) {
-      const msg = debugSbError('delete jogador catch', e);
+    if (jogadorError || !jogador) {
+      const msg = debugSbError('buscar jogador para deletar', jogadorError || new Error('Jogador não encontrado.'));
       setDebugMsg(msg);
+      return;
     }
+
+    // 2. Criar a mensagem de confirmação e exibir a caixa de diálogo
+    const mensagemConfirmacao = `Você tem certeza que deseja excluir o jogador "${jogador.nome}"? Esta ação não pode ser desfeita.`;
+    const confirmado = window.confirm(mensagemConfirmacao);
+
+    // 3. Se o usuário não confirmar, interromper a execução da função
+    if (!confirmado) {
+      console.log('[UI] Exclusão cancelada pelo usuário.');
+      setDebugMsg('ℹ️ Exclusão cancelada.');
+      return;
+    }
+
+    // --- A lógica de exclusão original continua aqui dentro, se confirmado ---
+    
+    const delPres = await supabase.from('presenca').delete().eq('jogador_id', id).select('id');
+    if (delPres.error) {
+      const msg = debugSbError('delete presenca(jogador)', delPres.error);
+      setDebugMsg(msg);
+      return;
+    }
+    console.log('[DEL presenca count]', delPres.data?.length ?? 0);
+
+    const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
+    if (delJog.error) {
+      const msg = debugSbError('delete jogador', delJog.error);
+      setDebugMsg(msg);
+      return;
+    }
+    console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
+
+    await load();
+    setDebugMsg('✅ Jogador excluído com sucesso.');
+
+  } catch (e: any) {
+    const msg = debugSbError('delete jogador catch', e);
+    setDebugMsg(msg);
   }
+}
 
   // ====== VOLUNTÁRIOS ======
   const [modalVol, setModalVol] = useState(false);
