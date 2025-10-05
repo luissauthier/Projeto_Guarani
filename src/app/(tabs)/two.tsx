@@ -95,6 +95,16 @@ export default function AdminScreen() {
 
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
 
+  // Efeito para limpar a mensagem de debug após 5 segundos
+  useEffect(() => {
+    if (debugMsg) {
+      const timer = setTimeout(() => {
+        setDebugMsg(null);
+      }, 5000); // 5 segundos
+      return () => clearTimeout(timer);
+    }
+  }, [debugMsg]);
+
   async function handleSignOut() {
     const { error } = await supabase.auth.signOut();
     setAuth(null);
@@ -279,62 +289,62 @@ export default function AdminScreen() {
     }
   }
 
-  /* ================= Excluir JOGADOR (direto com logs) ================= */
-  async function deletarJog(id: string) {
-  console.log('[UI] deletarJog start', id);
-  await debugLogSession();
+  // ====== MODAL DE EXCLUSÃO (Genérico) ======
+  const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, nome: string } | null>(null);
+  const [deleteEntityType, setDeleteEntityType] = useState<'jogador' | 'voluntario' | null>(null);
 
-  try {
-    // 1. Buscar o nome do jogador para confirmar a exclusão
-    const { data: jogador, error: jogadorError } = await supabase
-      .from('jogadores')
-      .select('nome') // Altere 'nome' se o nome da sua coluna for diferente
-      .eq('id', id)
-      .single(); // .single() para obter um único objeto, não um array
-
-    if (jogadorError || !jogador) {
-      const msg = debugSbError('buscar jogador para deletar', jogadorError || new Error('Jogador não encontrado.'));
-      setDebugMsg(msg);
-      return;
-    }
-
-    // 2. Criar a mensagem de confirmação e exibir a caixa de diálogo
-    const mensagemConfirmacao = `Você tem certeza que deseja excluir o jogador "${jogador.nome}"? Esta ação não pode ser desfeita.`;
-    const confirmado = window.confirm(mensagemConfirmacao);
-
-    // 3. Se o usuário não confirmar, interromper a execução da função
-    if (!confirmado) {
-      console.log('[UI] Exclusão cancelada pelo usuário.');
-      setDebugMsg('ℹ️ Exclusão cancelada.');
-      return;
-    }
-
-    // --- A lógica de exclusão original continua aqui dentro, se confirmado ---
-    
-    const delPres = await supabase.from('presenca').delete().eq('jogador_id', id).select('id');
-    if (delPres.error) {
-      const msg = debugSbError('delete presenca(jogador)', delPres.error);
-      setDebugMsg(msg);
-      return;
-    }
-    console.log('[DEL presenca count]', delPres.data?.length ?? 0);
-
-    const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
-    if (delJog.error) {
-      const msg = debugSbError('delete jogador', delJog.error);
-      setDebugMsg(msg);
-      return;
-    }
-    console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
-
-    await load();
-    setDebugMsg('✅ Jogador excluído com sucesso.');
-
-  } catch (e: any) {
-    const msg = debugSbError('delete jogador catch', e);
-    setDebugMsg(msg);
+  function openDeleteConfirm(item: { id: string, nome: string }, type: 'jogador' | 'voluntario') {
+    setItemToDelete(item);
+    setDeleteEntityType(type);
+    setDeleteModalVisible(true);
   }
-}
+  
+  function closeDeleteConfirm() {
+    setItemToDelete(null);
+    setDeleteEntityType(null);
+    setDeleteModalVisible(false);
+  }
+
+  async function handleConfirmDelete() {
+    if (!itemToDelete || !deleteEntityType) return;
+
+    if (deleteEntityType === 'jogador') {
+      await deletarJog(itemToDelete.id);
+    } else if (deleteEntityType === 'voluntario') {
+      await deletarVol(itemToDelete.id);
+    }
+    closeDeleteConfirm();
+  }
+
+  /* ================= Excluir JOGADOR ================= */
+  async function deletarJog(id: string) {
+    console.log('[UI] deletarJog start', id);
+    await debugLogSession();
+    try {
+      const delPres = await supabase.from('presenca').delete().eq('jogador_id', id).select('id');
+      if (delPres.error) {
+        const msg = debugSbError('delete presenca(jogador)', delPres.error);
+        setDebugMsg(msg);
+        return;
+      }
+      console.log('[DEL presenca count]', delPres.data?.length ?? 0);
+
+      const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
+      if (delJog.error) {
+        const msg = debugSbError('delete jogador', delJog.error);
+        setDebugMsg(msg);
+        return;
+      }
+      console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
+
+      await load();
+      setDebugMsg('✅ Jogador excluído com sucesso.');
+    } catch (e: any) {
+      const msg = debugSbError('delete jogador catch', e);
+      setDebugMsg(msg);
+    }
+  }
 
   // ====== VOLUNTÁRIOS ======
   const [modalVol, setModalVol] = useState(false);
@@ -380,7 +390,7 @@ export default function AdminScreen() {
     }
   }
 
-  /* ================= Excluir VOLUNTÁRIO (direto com logs) ================= */
+  /* ================= Excluir VOLUNTÁRIO ================= */
   async function deletarVol(id: string) {
     console.log('[UI] deletarVol start', id);
     await debugLogSession();
@@ -423,10 +433,13 @@ export default function AdminScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Banner de debug */}
+      {/* Banner de debug com timer e botão de fechar */}
       {debugMsg ? (
-        <View style={{ backgroundColor: '#FFCF66', padding: 8, borderRadius: 8, marginBottom: 8 }}>
-          <Text style={{ color: '#000' }}>{debugMsg}</Text>
+        <View style={styles.debugBanner}>
+          <Text style={styles.debugBannerText}>{debugMsg}</Text>
+          <TouchableOpacity onPress={() => setDebugMsg(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Feather name="x" size={20} color="#000" />
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -551,7 +564,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => deletarJog(item.id)}
+                      onPress={() => openDeleteConfirm(item, 'jogador')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -593,7 +606,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => deletarVol(item.id)}
+                      onPress={() => openDeleteConfirm(item, 'voluntario')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -779,6 +792,42 @@ export default function AdminScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      <Modal
+        visible={isDeleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeDeleteConfirm}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
+            {itemToDelete && (
+              <Text style={styles.modalText}>
+                Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : 'voluntário'}{' '}
+                <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome}</Text>?
+                Essa ação não pode ser desfeita.
+              </Text>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.btnNeutral, { flex: 1 }]} 
+                onPress={closeDeleteConfirm}
+              >
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.btnDanger, { flex: 1 }]} 
+                onPress={handleConfirmDelete}
+              >
+                <Text style={styles.btnText}>Excluir</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -847,4 +896,57 @@ const styles = StyleSheet.create({
   preview: { width:'100%', height:160, borderRadius:10, marginTop:10, borderWidth:1, borderColor:'#4A6572' },
 
   empty: { color:'#E0E0E0', textAlign:'center', marginVertical:30, fontSize:16 },
+  
+  // --- ESTILOS PARA MODAL DE EXCLUSÃO ---
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  modalContent: {
+    backgroundColor: '#1E2F47',
+    borderRadius: 12,
+    padding: 20,
+    marginHorizontal: 20,
+    width: '90%',
+    borderWidth: 1,
+    borderColor: '#3A506B',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 20,
+    marginBottom: 12,
+  },
+  modalText: {
+    color: '#B0B0B0',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+
+  // --- NOVOS ESTILOS PARA O BANNER DE DEBUG ---
+  debugBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFCF66',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  debugBannerText: {
+    color: '#000',
+    flex: 1,
+    marginRight: 8,
+  },
 });

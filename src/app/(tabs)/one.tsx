@@ -66,38 +66,36 @@ type Jogador = {
 
 export default function TreinosScreen() {
   const { setAuth, user, isAdmin, isCoach } = useAuth();
-  // Função para ABRIR o modal de confirmação
-  function openDeleteConfirm(treino: Treino) {
-    setTreinoToDelete(treino);
-    setDeleteModalVisible(true);
-  }
-
-  // Função para FECHAR o modal
-  function closeDeleteConfirm() {
-    setTreinoToDelete(null);
-    setDeleteModalVisible(false);
-  }
-
-  // Função que executa a exclusão e depois fecha o modal
-  async function handleConfirmDelete() {
-    if (!treinoToDelete) return; // Segurança
-    
-    await deletarTreino(treinoToDelete.id);
-    closeDeleteConfirm(); // Fecha o modal após a operação
-  }
-  // banner de debug
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
 
-  async function handleSignOut() {
-    const { error } = await supabase.auth.signOut();
-    setAuth(null);
-    if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
-  }
+  useEffect(() => {
+    if (debugMsg) {
+      const timer = setTimeout(() => {
+        setDebugMsg(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [debugMsg]);
 
   const [treinos, setTreinos] = useState<Treino[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [treinoToDelete, setTreinoToDelete] = useState<Treino | null>(null);
+  
+  const [modal, setModal] = useState(false);
+  const [editTreino, setEditTreino] = useState<Treino | null>(null);
+  
+  const [dataHora, setDataHora] = useState('');
+  const [local, setLocal] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [saving, setSaving] = useState(false);
+  
+  const [jogadores, setJogadores] = useState<Jogador[]>([]);
+  const [sel, setSel] = useState<Record<string, boolean>>({});
+  
+  const [yearFrom, setYearFrom] = useState<string>('');
+  const [yearTo, setYearTo] = useState<string>('');
+  const [searchJog, setSearchJog] = useState('');
 
   const loadTreinos = useCallback(async () => {
     setLoading(true);
@@ -116,37 +114,39 @@ export default function TreinosScreen() {
 
   useEffect(() => { loadTreinos(); }, [loadTreinos]);
 
-  // ====== CRIAR / EDITAR ======
-  const [modal, setModal] = useState(false);
-  const [editTreino, setEditTreino] = useState<Treino | null>(null);
-
-  const [dataHora, setDataHora] = useState('');
-  const [local, setLocal] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // seleção de jogadores
-  const [jogadores, setJogadores] = useState<Jogador[]>([]);
-  const [sel, setSel] = useState<Record<string, boolean>>({});
-
-  const [yearFrom, setYearFrom] = useState<string>(''); // ex 2008
-  const [yearTo, setYearTo] = useState<string>('');     // ex 2015
-  const [searchJog, setSearchJog] = useState('');
-
   async function loadJogadoresAtivos() {
-    const q = supabase.from('jogadores')
+    const { data, error } = await supabase
+      .from('jogadores')
       .select('id, nome, categoria, status')
       .eq('status', 'ativo')
       .order('categoria', { ascending: false });
 
-    const { data, error } = await q;
-    console.log('[loadJogadoresAtivos] error:', error, 'rows:', data?.length);
     if (error) {
-      Alert.alert('Erro', error.message);
+      Alert.alert('Erro ao carregar jogadores', error.message);
       setJogadores([]);
     } else {
       setJogadores((data ?? []) as any);
     }
+  }
+
+  // --- CORREÇÃO: Função para buscar presenças existentes ---
+  async function loadExistingPresences(treinoId: string) {
+    const { data, error } = await supabase
+      .from('presenca')
+      .select('jogador_id')
+      .eq('treino_id', treinoId);
+
+    if (error) {
+      console.error("Erro ao buscar presenças:", error);
+      return {};
+    }
+
+    const presencesMap = (data ?? []).reduce((acc, item) => {
+      acc[item.jogador_id] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+
+    setSel(presencesMap);
   }
 
   function openCreate() {
@@ -154,20 +154,42 @@ export default function TreinosScreen() {
     setDataHora('');
     setLocal('');
     setDescricao('');
-    setSel({});
+    setSel({}); // Limpa seleções antigas
     setModal(true);
     loadJogadoresAtivos();
   }
 
-  function openEdit(t: Treino) {
+  // --- CORREÇÃO: Chama a busca de presenças ao editar ---
+  async function openEdit(t: Treino) {
     setEditTreino(t);
-    // CORRIGIDO: formata para horário local (evita "+3")
     setDataHora(formatLocalForInput(t.data_hora));
     setLocal(t.local ?? '');
     setDescricao(t.descricao ?? '');
-    setSel({});
     setModal(true);
-    loadJogadoresAtivos();
+    await loadJogadoresAtivos();
+    await loadExistingPresences(t.id); // Busca presenças existentes
+  }
+  
+  function openDeleteConfirm(treino: Treino) {
+    setTreinoToDelete(treino);
+    setDeleteModalVisible(true);
+  }
+
+  function closeDeleteConfirm() {
+    setTreinoToDelete(null);
+    setDeleteModalVisible(false);
+  }
+
+  async function handleConfirmDelete() {
+    if (!treinoToDelete) return;
+    await deletarTreino(treinoToDelete.id);
+    closeDeleteConfirm();
+  }
+
+  async function handleSignOut() {
+    const { error } = await supabase.auth.signOut();
+    setAuth(null);
+    if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
   }
 
   const jogadoresFiltrados = useMemo(() => {
@@ -185,8 +207,6 @@ export default function TreinosScreen() {
     setSel(s => ({ ...s, [id]: !s[id] }));
   }
 
-  // Aceita "AAAA-MM-DD" | "AAAA-MM-DD HH:MM" | "AAAA-MM-DD HH:MM:SS"
-  // Retorna "AAAA-MM-DDTHH:MM:SS±HH:MM"
   function toPgTimestamptzWithOffset(input: string) {
     const raw = input.trim();
     if (!raw) return null;
@@ -206,31 +226,54 @@ export default function TreinosScreen() {
     return `${base}${sign}${hh}:${mm}`;
   }
 
+  // --- CORREÇÃO: Função para salvar/atualizar presenças ---
+  async function updatePresencas(treinoId: string) {
+    // 1. Apaga todas as presenças antigas deste treino
+    const { error: deleteError } = await supabase
+      .from('presenca')
+      .delete()
+      .eq('treino_id', treinoId);
+
+    if (deleteError) {
+      throw new Error(`Erro ao apagar presenças antigas: ${deleteError.message}`);
+    }
+
+    // 2. Insere as novas presenças selecionadas
+    const selecionados = Object.keys(sel).filter((id) => sel[id]);
+    if (selecionados.length === 0) {
+      return; // Se não houver ninguém selecionado, apenas retorna
+    }
+
+    const rows = selecionados.map((jid) => ({
+      treino_id: treinoId,
+      jogador_id: jid,
+      status: 'presente',
+    }));
+
+    const { error: insertError } = await supabase.from('presenca').insert(rows);
+    if (insertError) {
+      throw new Error(`Erro ao inserir novas presenças: ${insertError.message}`);
+    }
+  }
+
+  // --- CORREÇÃO: Lógica de `save` ajustada ---
   async function save() {
     if (saving) return;
     if (!user?.id) {
       Alert.alert('Erro', 'Usuário não identificado.');
       return;
     }
-    if (!dataHora.trim()) {
-      Alert.alert('Atenção', 'Informe data e hora (AAAA-MM-DD ou AAAA-MM-DD HH:MM).');
-      return;
-    }
-
     const ts = toPgTimestamptzWithOffset(dataHora);
     if (!ts) {
-      Alert.alert('Atenção', 'Formato inválido. Use AAAA-MM-DD ou AAAA-MM-DD HH:MM.');
+      Alert.alert('Atenção', 'Formato de data inválido. Use AAAA-MM-DD ou AAAA-MM-DD HH:MM.');
       return;
     }
 
+    setSaving(true);
     try {
-      setSaving(true);
-
       if (editTreino) {
         // ===== UPDATE =====
-        console.log('[treinos.update] ts->', ts, 'editTreino.id->', editTreino!.id);
-
-        const { data: rows, error: upErr } = await supabase
+        const { data: updatedTreino, error: updateError } = await supabase
           .from('treinos')
           .update({
             data_hora: ts,
@@ -239,23 +282,21 @@ export default function TreinosScreen() {
             atualizado_em: new Date().toISOString(),
           })
           .eq('id', editTreino.id)
-          .select('*'); // sem .single()
+          .select()
+          .single();
 
-        if (upErr) throw upErr;
-        if (!rows || rows.length === 0) {
-          Alert.alert('Sem permissão', 'Não foi possível atualizar este treino (RLS).');
-          return;
+        if (updateError) throw updateError;
+        if (!updatedTreino) {
+            throw new Error("Não foi possível encontrar o treino para atualizar.");
         }
 
-        const atualizado = rows[0];
+        // Atualiza presenças
+        await updatePresencas(updatedTreino.id);
+        
         setModal(false);
-        setTreinos(prev =>
-          prev
-            .map(t => (t.id === atualizado.id ? { ...t, ...atualizado } : t))
-            .sort((a, b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime())
-        );
-        await loadTreinos();
+        await loadTreinos(); // Recarrega a lista principal
         Alert.alert('Sucesso', 'Treino atualizado.');
+
       } else {
         // ===== INSERT =====
         const { data: novo, error } = await supabase
@@ -269,25 +310,13 @@ export default function TreinosScreen() {
           .single();
 
         if (error) throw error;
+        if (!novo) throw new Error("Falha ao criar o treino.");
 
+        // Insere as presenças para o novo treino
+        await updatePresencas(novo.id);
+        
         setModal(false);
-        setTreinos(prev =>
-          [...prev, novo!].sort((a, b) => new Date(a.data_hora).getTime() - new Date(b.data_hora).getTime())
-        );
-
-        // presenças apenas na criação
-        const selecionados = Object.keys(sel).filter((id) => sel[id]);
-        if (selecionados.length > 0) {
-          const rows = selecionados.map((jid) => ({
-            treino_id: novo!.id,
-            jogador_id: jid,
-            status: 'presente',
-          }));
-          const { error: errPres } = await supabase.from('presenca').insert(rows);
-          if (errPres) throw errPres;
-        }
-
-        await loadTreinos();
+        await loadTreinos(); // Recarrega a lista principal
         Alert.alert('Sucesso', 'Treino criado.');
       }
     } catch (e: any) {
@@ -299,28 +328,14 @@ export default function TreinosScreen() {
   }
 
   async function deletarTreino(id: string) {
-    console.log('[UI] deletarTreino start', id);
     await debugLogSession();
     try {
-      // 1) apaga presenças do treino
-      const delPres = await supabase.from('presenca').delete().eq('treino_id', id).select('id');
-      if (delPres.error) {
-        const msg = debugSbError('delete presenca(treino)', delPres.error);
-        setDebugMsg(msg);
-        return;
-      }
-      console.log('[DEL presenca count]', delPres.data?.length ?? 0);
+      const delPres = await supabase.from('presenca').delete().eq('treino_id', id);
+      if (delPres.error) throw delPres.error;
+      
+      const delTre = await supabase.from('treinos').delete().eq('id', id);
+      if (delTre.error) throw delTre.error;
 
-      // 2) apaga o treino
-      const delTre = await supabase.from('treinos').delete().eq('id', id).select('id');
-      if (delTre.error) {
-        const msg = debugSbError('delete treino', delTre.error);
-        setDebugMsg(msg);
-        return;
-      }
-      console.log('[DEL treinos count]', delTre.data?.length ?? 0);
-
-      // 3) recarrega lista
       await loadTreinos();
       setDebugMsg('✅ Treino excluído com sucesso.');
     } catch (e: any) {
@@ -341,12 +356,12 @@ export default function TreinosScreen() {
             <Text style={styles.btnText}>Editar</Text>
           </TouchableOpacity>
           <TouchableOpacity
-          style={styles.btnDanger}
-          onPress={() => openDeleteConfirm(item)} // Alterado aqui!
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.btnText}>Excluir</Text>
-        </TouchableOpacity>
+            style={styles.btnDanger}
+            onPress={() => openDeleteConfirm(item)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={styles.btnText}>Excluir</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -359,12 +374,14 @@ export default function TreinosScreen() {
         <TouchableOpacity onPress={handleSignOut}><Feather name="log-out" size={24} color="#00C2CB" /></TouchableOpacity>
       </View>
 
-      {/* Banner de debug */}
-      {debugMsg ? (
-        <View style={{ backgroundColor: '#FFCF66', padding: 8, borderRadius: 8, marginBottom: 8 }}>
-          <Text style={{ color: '#000' }}>{debugMsg}</Text>
+      {debugMsg && (
+        <View style={styles.debugBanner}>
+          <Text style={styles.debugBannerText}>{debugMsg}</Text>
+          <TouchableOpacity onPress={() => setDebugMsg(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Feather name="x" size={20} color="#000" />
+          </TouchableOpacity>
         </View>
-      ) : null}
+      )}
 
       <Text style={styles.h1}>Treinos</Text>
 
@@ -382,7 +399,6 @@ export default function TreinosScreen() {
       ) : (
         <FlatList
           data={treinos}
-          extraData={treinos}
           keyExtractor={(t) => t.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 40 }}
@@ -390,12 +406,11 @@ export default function TreinosScreen() {
         />
       )}
       
-      {/* MODAL CRIAR/EDITAR */}
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <View style={{ flex: 1, padding: 16 }}>
             <Text style={styles.h1}>{editTreino ? 'Editar treino' : 'Novo treino'}</Text>
-
+            
             <TextInput
               style={styles.input}
               placeholder="Data e hora (AAAA-MM-DD HH:MM)"
@@ -420,8 +435,7 @@ export default function TreinosScreen() {
               onChangeText={setDescricao}
             />
 
-            {/* SELEÇÃO DE JOGADORES */}
-            <View style={styles.box}>
+            <View style={[styles.box, { flex: 1 }]}>
               <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Selecionar jogadores (ativos)</Text>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TextInput
@@ -448,15 +462,19 @@ export default function TreinosScreen() {
                 value={searchJog}
                 onChangeText={setSearchJog}
               />
-
-              {jogadoresFiltrados.map(j => (
-                <View key={j.id} style={styles.rowSel}>
-                  <Text style={{ color: '#fff', flex: 1 }}>{j.nome} {j.categoria ? `(${j.categoria})` : ''}</Text>
-                  <Switch value={!!sel[j.id]} onValueChange={() => toggleSel(j.id)} />
-                </View>
-              ))}
+              <FlatList
+                data={jogadoresFiltrados}
+                keyExtractor={(j) => j.id}
+                renderItem={({ item }) => (
+                  <View style={styles.rowSel}>
+                    <Text style={{ color: '#fff', flex: 1 }}>{item.nome} {item.categoria ? `(${item.categoria})` : ''}</Text>
+                    <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
+                  </View>
+                )}
+                ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
+              />
             </View>
-
+            
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
               <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={save} disabled={saving}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
@@ -465,50 +483,48 @@ export default function TreinosScreen() {
                 <Text style={styles.btnText}>Cancelar</Text>
               </TouchableOpacity>
             </View>
-            
-          </ScrollView>
+          </View>
         </SafeAreaView>
       </Modal>
+
       <Modal
-      visible={isDeleteModalVisible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={closeDeleteConfirm}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
-          {treinoToDelete && (
-            <Text style={styles.modalText}>
-              Você tem certeza que deseja excluir o treino do dia{' '}
-              <Text style={{ fontWeight: 'bold' }}>
-                {new Date(treinoToDelete.data_hora).toLocaleString()}
+        visible={isDeleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeDeleteConfirm}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
+            {treinoToDelete && (
+              <Text style={styles.modalText}>
+                Você tem certeza que deseja excluir o treino do dia{' '}
+                <Text style={{ fontWeight: 'bold' }}>
+                  {new Date(treinoToDelete.data_hora).toLocaleString()}
+                </Text>
+                ? Essa ação não pode ser desfeita.
               </Text>
-              ? Essa ação não pode ser desfeita.
-            </Text>
-          )}
-          <View style={styles.modalActions}>
-            <TouchableOpacity 
-              style={[styles.btnNeutral, { flex: 1 }]} 
-              onPress={closeDeleteConfirm}
-            >
-              <Text style={styles.btnText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.btnDanger, { flex: 1 }]} 
-              onPress={handleConfirmDelete}
-            >
-              <Text style={styles.btnText}>Excluir</Text>
-            </TouchableOpacity>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.btnNeutral, { flex: 1 }]} 
+                onPress={closeDeleteConfirm}
+              >
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.btnDanger, { flex: 1 }]} 
+                onPress={handleConfirmDelete}
+              >
+                <Text style={styles.btnText}>Excluir</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
     </SafeAreaView>
   );
 }
-
-/* ================= Styles ================= */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A1931', paddingHorizontal: 16 },
@@ -518,12 +534,10 @@ const styles = StyleSheet.create({
   },
   logo: { fontSize: 32, fontWeight: '800', color: '#FFF' },
   h1: { color: '#FFF', fontWeight: '700', fontSize: 22, marginBottom: 12, textAlign: 'center' },
-
   input: {
     height: 50, backgroundColor: '#203A4A', borderRadius: 10, paddingHorizontal: 12,
     color: '#FFF', borderWidth: 1, borderColor: '#4A6572', marginBottom: 10
   },
-
   card: {
     backgroundColor: '#1E2F47', borderRadius: 12, padding: 12, marginBottom: 12,
     borderWidth: 1, borderColor: '#3A506B'
@@ -531,15 +545,19 @@ const styles = StyleSheet.create({
   title: { color: '#FFF', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
   line: { color: '#B0B0B0', marginTop: 2 },
   empty: { color: '#E0E0E0', textAlign: 'center', marginVertical: 30, fontSize: 16 },
-
   btnPrimary: {
     backgroundColor: '#18641c', paddingVertical: 10, paddingHorizontal: 14,
-    borderRadius: 10, flexDirection: 'row', alignItems: 'center'
+    borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center'
   },
-  btnDanger: { backgroundColor: '#FF4C4C', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 },
-  btnNeutral: { backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 },
+  btnDanger: { 
+    backgroundColor: '#FF4C4C', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, 
+    alignItems: 'center', justifyContent: 'center' 
+  },
+  btnNeutral: { 
+    backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center'
+  },
   btnText: { color: '#fff', fontWeight: 'bold' },
-
   box: {
     backgroundColor: '#1E2F47', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#3A506B', marginBottom: 12
@@ -548,14 +566,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#203A4A'
   },
-   modalOverlay: {
+  modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   modalContent: {
-    backgroundColor: '#1E2F47', // Mesma cor do card
+    backgroundColor: '#1E2F47',
     borderRadius: 12,
     padding: 20,
     marginHorizontal: 20,
@@ -581,5 +599,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     gap: 10,
+  },
+  debugBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFCF66',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  debugBannerText: {
+    color: '#000',
+    flex: 1,
+    marginRight: 8,
   },
 });
