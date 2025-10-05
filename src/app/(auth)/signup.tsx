@@ -1,7 +1,8 @@
+// app/(seu-caminho)/signup.tsx
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, Alert, ActivityIndicator,
-  SafeAreaView, ScrollView, Image, TouchableOpacity
+  SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Image,
+  ActivityIndicator, Alert, Pressable
 } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,12 +11,12 @@ import { Feather } from '@expo/vector-icons';
 
 type UploadKind = 'foto' | 'doc_frente' | 'doc_verso';
 
-export default function PreInscricao() {
+export default function Signup() {
   const [nome, setNome] = useState('');
-  const [dataNascimento, setDataNascimento] = useState(''); // yyyy-mm-dd (obrigatório)
-  const [responsavel, setResponsavel] = useState('');       // obrigatório se < 18
-  const [telefone, setTelefone] = useState('');             // obrigatório
-  const [email, setEmail] = useState('');                   // opcional
+  const [dataNascimento, setDataNascimento] = useState(''); // yyyy-mm-dd
+  const [responsavel, setResponsavel] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [email, setEmail] = useState('');
 
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [docFrenteUri, setDocFrenteUri] = useState<string | null>(null);
@@ -24,7 +25,6 @@ export default function PreInscricao() {
   const [uploading, setUploading] = useState<UploadKind | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // helpers
   const idade = useMemo(() => {
     if (!dataNascimento) return null;
     const dob = new Date(dataNascimento);
@@ -65,7 +65,6 @@ export default function PreInscricao() {
 
   async function uploadToStorage(localUri: string) {
     try {
-      // uploading state apenas para mostrar spinner do bloco que chamou
       const res = await fetch(localUri);
       const blob = await res.blob();
       const ext = 'jpg';
@@ -125,7 +124,7 @@ export default function PreInscricao() {
         doc_id_frente_path,
         doc_id_verso_path,
         status: 'pre_inscrito',
-        termo_assinado_path: null
+        termo_assinado_path: null,
       });
       if (error) throw error;
 
@@ -153,21 +152,12 @@ export default function PreInscricao() {
           Pré-inscrição de jogador
         </Text>
 
-        <TextInput
-          placeholder="Nome completo do jogador"
-          placeholderTextColor="#A0A0A0"
-          value={nome}
-          onChangeText={setNome}
-          style={styles.input}
-        />
+        <TextInput placeholder="Nome completo do jogador" placeholderTextColor="#A0A0A0"
+          value={nome} onChangeText={setNome} style={styles.input} />
 
-        <TextInput
-          placeholder="Data de nascimento (AAAA-MM-DD)"
-          placeholderTextColor="#A0A0A0"
-          value={dataNascimento}
-          onChangeText={setDataNascimento}
-          style={styles.input}
-        />
+        <TextInput placeholder="Data de nascimento (AAAA-MM-DD)" placeholderTextColor="#A0A0A0"
+          value={dataNascimento} onChangeText={setDataNascimento} style={styles.input} />
+
         {(idade !== null || categoriaAno !== null) && (
           <Text style={{ color: '#E0E0E0', marginBottom: 10 }}>
             {idade !== null ? `Idade: ${idade} anos ` : ''}
@@ -176,63 +166,35 @@ export default function PreInscricao() {
           </Text>
         )}
 
-        <TextInput
-          placeholder="Telefone para contato"
-          placeholderTextColor="#A0A0A0"
-          value={telefone}
-          onChangeText={setTelefone}
-          keyboardType="phone-pad"
-          style={styles.input}
+        <TextInput placeholder="Telefone para contato" placeholderTextColor="#A0A0A0"
+          value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" style={styles.input} />
+
+        <TextInput placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
+          value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
+
+        <TextInput placeholder="Nome do responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
+          value={responsavel} onChangeText={setResponsavel} style={styles.input} />
+
+        {/* Foto */}
+        <UploadBox
+          title="Foto do jogador"
+          uri={fotoUri}
+          onPick={() => pick('foto')}
+          uploading={uploading === 'foto'}
         />
 
-        <TextInput
-          placeholder="E-mail (opcional)"
-          placeholderTextColor="#A0A0A0"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-
-        <TextInput
-          placeholder="Nome do responsável (se menor de 18)"
-          placeholderTextColor="#A0A0A0"
-          value={responsavel}
-          onChangeText={setResponsavel}
-          style={styles.input}
-        />
-
-        {/* Foto do jogador */}
-        <View style={styles.uploadBox}>
-          <Text style={styles.uploadTitle}>Foto do jogador</Text>
-          <Pressable style={styles.pickButton} onPress={() => pick('foto')}>
-            <Feather name="image" size={18} color="#FFF" />
-            <Text style={styles.pickButtonText}>Selecionar imagem</Text>
-          </Pressable>
-          {fotoUri ? <Image source={{ uri: fotoUri }} style={styles.preview} /> : null}
-          {uploading === 'foto' && <ActivityIndicator color="#00C2CB" />}
-        </View>
-
-        {/* Documento identidade (opcional) */}
-        <View style={styles.uploadBox}>
-          <Text style={styles.uploadTitle}>Documento de identidade (opcional)</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Pressable style={[styles.pickButton, { flex: 1 }]} onPress={() => pick('doc_frente')}>
-              <Feather name="file-plus" size={18} color="#FFF" />
-              <Text style={styles.pickButtonText}>Frente</Text>
-            </Pressable>
-            <Pressable style={[styles.pickButton, { flex: 1 }]} onPress={() => pick('doc_verso')}>
-              <Feather name="file-plus" size={18} color="#FFF" />
-              <Text style={styles.pickButtonText}>Verso</Text>
-            </Pressable>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            {docFrenteUri ? <Image source={{ uri: docFrenteUri }} style={[styles.preview, { flex: 1 }]} /> : null}
-            {docVersoUri ? <Image source={{ uri: docVersoUri }} style={[styles.preview, { flex: 1 }]} /> : null}
-          </View>
-          {(uploading === 'doc_frente' || uploading === 'doc_verso') && <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />}
-        </View>
+        {/* Documento (opcional) */}
+        <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Documento de identidade (opcional)</Text>
+        <Pressable style={[styles.pickButton, { marginBottom: 8 }]} onPress={() => pick('doc_frente')}>
+          <Feather name="file-plus" size={18} color="#FFF" />
+          <Text style={styles.pickButtonText}>Frente</Text>
+        </Pressable>
+        <Pressable style={[styles.pickButton, { marginBottom: 8 }]} onPress={() => pick('doc_verso')}>
+          <Feather name="file-plus" size={18} color="#FFF" />
+          <Text style={styles.pickButtonText}>Verso</Text>
+        </Pressable>
+        <RowPreviews frente={docFrenteUri} verso={docVersoUri} />
+        {(uploading === 'doc_frente' || uploading === 'doc_verso') && <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />}
 
         <Pressable
           style={[styles.submitButton, (saving || uploading !== null) && { opacity: 0.7 }]}
@@ -250,52 +212,49 @@ export default function PreInscricao() {
   );
 }
 
+function UploadBox({ title, uri, onPick, uploading }:{
+  title: string; uri: string | null; onPick: () => void; uploading: boolean;
+}) {
+  return (
+    <React.Fragment>
+      <Text style={styles.uploadTitle}>{title}</Text>
+      <Pressable style={styles.pickButton} onPress={onPick}>
+        <Feather name="image" size={18} color="#FFF" />
+        <Text style={styles.pickButtonText}>Selecionar imagem</Text>
+      </Pressable>
+      {uri ? <Image source={{ uri }} style={styles.preview} /> : null}
+      {uploading && <ActivityIndicator color="#00C2CB" />}
+    </React.Fragment>
+  );
+}
+
+function RowPreviews({ frente, verso }:{ frente: string|null; verso: string|null }) {
+  if (!frente && !verso) return null;
+  return (
+    <React.Fragment>
+      <Image source={{ uri: frente ?? undefined }} style={[styles.preview, { display: frente ? 'flex' : 'none' }]} />
+      <Image source={{ uri: verso ?? undefined }} style={[styles.preview, { display: verso ? 'flex' : 'none' }]} />
+    </React.Fragment>
+  );
+}
+
 const styles = {
   input: {
-    height: 55,
-    backgroundColor: '#203A4A',
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-    color: '#FFF',
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#4A6572',
-  } as any,
-  uploadBox: {
-    backgroundColor: '#1E2F47',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#3A506B',
-    marginBottom: 12,
+    height: 55, backgroundColor: '#203A4A', borderRadius: 12, paddingHorizontal: 20, marginBottom: 12,
+    color: '#FFF', fontSize: 16, borderWidth: 1, borderColor: '#4A6572',
   } as any,
   uploadTitle: { color: '#fff', fontWeight: 'bold', marginBottom: 8 } as any,
   pickButton: {
-    backgroundColor: '#4A6572',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    backgroundColor: '#4A6572', paddingVertical: 12, borderRadius: 10, alignItems: 'center',
+    justifyContent: 'center', flexDirection: 'row', gap: 8,
   } as any,
   pickButtonText: { color: '#fff', fontWeight: 'bold', marginLeft: 8 } as any,
   preview: {
-    width: '100%',
-    height: 160,
-    borderRadius: 10,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#4A6572',
+    width: '100%', height: 160, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#4A6572',
   } as any,
   submitButton: {
-    backgroundColor: '#18641c',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
+    backgroundColor: '#18641c', paddingVertical: 16, borderRadius: 12, alignItems: 'center',
+    justifyContent: 'center', marginTop: 8,
   } as any,
   submitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 } as any,
 };

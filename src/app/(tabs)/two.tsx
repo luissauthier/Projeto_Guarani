@@ -84,7 +84,7 @@ const formatPgDateOnly = (s?: string | null) => {
 
 /* ============== Componente ============== */
 export default function AdminScreen() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, setAuth } = useAuth();
   useEffect(() => {
     if (!isAdmin) {
       Alert.alert('Acesso Negado', 'Você não tem permissão para acessar esta tela.');
@@ -94,6 +94,12 @@ export default function AdminScreen() {
   if (!isAdmin) return null;
 
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
+
+  async function handleSignOut() {
+    const { error } = await supabase.auth.signOut();
+    setAuth(null);
+    if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
+  }
 
   const [tab, setTab] = useState<'jogadores' | 'voluntarios'>('jogadores');
 
@@ -410,7 +416,12 @@ export default function AdminScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}><Text style={styles.logo}>Projeto Guarani</Text></View>
+      <View style={styles.header}>
+        <Text style={styles.logo}>Projeto Guarani</Text>
+        <TouchableOpacity onPress={handleSignOut}>
+          <Feather name="log-out" size={24} color="#00C2CB" />
+        </TouchableOpacity>
+      </View>
 
       {/* Banner de debug */}
       {debugMsg ? (
