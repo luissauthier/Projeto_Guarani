@@ -1,39 +1,41 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@/src/contexts/AuthContext';
 
 export default function TabLayout() {
+  const { authReady, isAdmin } = useAuth();
+
+  if (!authReady) return null;
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#18641c', // A cor ativa (verde) terá bom contraste no branco
-        tabBarInactiveTintColor: 'gray',   // A cor inativa (cinza) também funciona bem
+        headerShown: false,
+        tabBarActiveTintColor: '#18641c',
+        tabBarInactiveTintColor: 'gray',
         tabBarStyle: {
-          backgroundColor: '#FFFFFF', // <-- COR DE FUNDO ALTERADA PARA BRANCO
-          borderTopColor: '#E0E0E0',   // Cor da borda superior para um cinza claro, mais suave
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E0E0E0',
         },
       }}
     >
       <Tabs.Screen
-        // Aponta para o arquivo one.tsx
         name="one"
         options={{
           title: 'Treinos',
-          headerShown: false,
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="football" size={28} color={color} />
-          ),
+          tabBarIcon: ({ color }) => <Ionicons name="football" size={28} color={color} />,
         }}
       />
+
+      {/* Mantém registrada, mas esconde para não-admin */}
       <Tabs.Screen
-        // Aponta para o arquivo two.tsx
         name="two"
         options={{
           title: 'Administrativo',
-          headerShown: false,
-          tabBarIcon: ({ color }) => (
-            <FontAwesome name="users" size={24} color={color} />
-          ),
+          // quando não for admin, remove da Tab bar e do deep-linking
+          href: isAdmin ? undefined : null,
+          tabBarIcon: ({ color }) => <FontAwesome name="users" size={24} color={color} />,
         }}
       />
     </Tabs>

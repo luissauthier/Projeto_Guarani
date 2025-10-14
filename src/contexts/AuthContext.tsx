@@ -6,51 +6,77 @@ import { router } from 'expo-router';
 
 type Role = 'admin' | 'coach' | 'viewer';
 
-interface AppUser extends User {
-  type_user?: Role;
-}
+interface AppUser extends User { type_user?: Role; }
 
 interface AuthContextProps {
   user: AppUser | null;
   role: Role;
   isAdmin: boolean;
   isCoach: boolean;
+  authReady: boolean;
   setAuth: (authUser: AppUser | null) => void;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;  // <<< novo
 }
 
 const AuthContext = createContext({} as AuthContextProps);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [role, setRole] = useState<Role>('viewer');
+  const [user, setUser]   = useState<AppUser | null>(null);
+  const [role, setRole]   = useState<Role>('viewer');
+  const [authReady, setAuthReady] = useState(false);
 
   async function fetchProfile(sessionUser: User) {
-    const { data } = await supabase
+    console.log('[Auth] fetchProfile for uid:', sessionUser.id, 'email:', sessionUser.email);
+    const { data, error } = await supabase
       .from('users')
       .select('type_user')
       .eq('id', sessionUser.id)
-      .single();
+      .maybeSingle();
+
+    if (error) console.log('[Auth] fetchProfile error:', error);
+    console.log('[Auth] users row:', data);
 
     const r = (data?.type_user as Role) ?? 'viewer';
+    console.log('[Auth] resolved role:', r);
+
     const appUser: AppUser = { ...sessionUser, type_user: r };
     setUser(appUser);
     setRole(r);
 
-    // redirecionamento centralizado aqui
-    router.replace('/(tabs)/one'); // admin e coach caem na aba de treinos por padrão
+    // destino padrão (se já não estiver nele)
+    try { router.replace('/(tabs)/one'); } catch {}
+  }
+
+  // exposto pra gente forçar um reload
+  async function refreshProfile() {
+    const { data } = await supabase.auth.getSession();
+    const sUser = data.session?.user;
+    if (sUser) await fetchProfile(sUser);
   }
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (ev, session) => {
+      console.log('[Auth] onAuthStateChange:', ev, 'uid:', session?.user?.id);
       if (session?.user) {
         await fetchProfile(session.user);
+        setAuthReady(true);
       } else {
         setUser(null);
         setRole('viewer');
+        setAuthReady(true);
         router.replace('/(auth)/signin');
       }
     });
+
+    // bootstrap em refresh
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const sUser = data.session?.user;
+      if (sUser) await fetchProfile(sUser);
+      setAuthReady(true);
+    })();
+
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -64,11 +90,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   async function signOut() {
     await supabase.auth.signOut();
-    // o onAuthStateChange já redireciona para /signin
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, isAdmin, isCoach, setAuth, signOut }}>
+    <AuthContext.Provider
+      value={{ user, role, isAdmin, isCoach, authReady, setAuth, signOut, refreshProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

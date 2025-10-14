@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, TextInput,
-  TouchableOpacity, FlatList, ActivityIndicator, Modal, ScrollView, Image
+  TouchableOpacity, FlatList, ActivityIndicator, Platform, Modal, ScrollView, Image
 } from 'react-native';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { supabase } from '@/src/lib/supabase';
-import { router } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -23,6 +23,30 @@ function debugSbError(ctx: string, error: any) {
   return msg;
 }
 
+function WebModal({
+  visible,
+  children,
+  onRequestClose,
+}: {
+  visible: boolean;
+  children: React.ReactNode;
+  onRequestClose?: () => void;
+}) {
+  if (Platform.OS !== 'web') {
+    return (
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={onRequestClose}>
+        {children}
+      </Modal>
+    );
+  }
+  if (!visible) return null;
+  return (
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>{children}</View>
+    </View>
+  );
+}
+
 async function debugLogSession() {
   try {
     const { data } = await supabase.auth.getSession();
@@ -38,7 +62,7 @@ async function debugLogSession() {
 
 /* ============== Tipos ============== */
 type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
-type TipoVol = 'assistente' | 'preparador' | 'coord' | 'outro';
+type TipoVol = 'comum' | 'lider' | 'coordenador'; // enum igual ao DB
 
 type Jogador = {
   id: string;
@@ -57,24 +81,23 @@ type Jogador = {
   atualizado_em?: string | null;
 };
 
-type Voluntario = {
+type UserRow = {
   id: string;
-  nome: string;
-  telefone: string | null;
+  full_name: string | null;
   email: string | null;
-  tipo: TipoVol;
+  telefone: string | null;
   ativo: boolean;
   observacoes: string | null;
+  type_user: TipoVol | null;   // <- era "tipo"
   created_at: string;
   updated_at: string | null;
 };
 
 const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo'];
-const VOL_TIPOS: TipoVol[] = ['assistente','preparador','coord','outro'];
+const VOL_TIPOS: TipoVol[] = ['comum','lider','coordenador'];
 const getCategoriaAno = (j: Jogador) =>
   j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
 
-// formata DATE do Postgres ("YYYY-MM-DD") sem aplicar fuso
 const formatPgDateOnly = (s?: string | null) => {
   if (!s) return '-';
   const [y, m, d] = s.split('-');
@@ -84,23 +107,46 @@ const formatPgDateOnly = (s?: string | null) => {
 
 /* ============== Componente ============== */
 export default function AdminScreen() {
-  const { isAdmin, setAuth } = useAuth();
+  // ► agora também uso role/user/refreshProfile para debug
+  const { isAdmin, authReady, role, user, refreshProfile, setAuth } = useAuth();
+
+  // --- DIAGNÓSTICO: loga sempre que o guard mudar de estado
   useEffect(() => {
-    if (!isAdmin) {
-      Alert.alert('Acesso Negado', 'Você não tem permissão para acessar esta tela.');
+    console.log('[ADMIN] authReady:', authReady, 'isAdmin:', isAdmin, 'role:', role, 'uid:', user?.id);
+  }, [authReady, isAdmin, role, user?.id]);
+
+  // --- Inspeção direta da linha em public.users (útil p/ ver RLS/perfil ausente)
+  const [inspectedRole, setInspectedRole] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      if (!user?.id) return;
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, type_user')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (error) console.log('[ADMIN] check users row error:', error);
+      console.log('[ADMIN] users row for me:', data);
+      setInspectedRole(data?.type_user ?? null);
+    })();
+  }, [user?.id]);
+
+  // Gate: só decide depois do perfil carregar
+  useEffect(() => {
+    if (authReady && !isAdmin) {
+      console.log('[ADMIN] not admin, redirecting…');
       router.replace('/(tabs)/one');
     }
-  }, [isAdmin]);
-  if (!isAdmin) return null;
+  }, [authReady, isAdmin]);
+
+  if (!authReady) return null; // ainda carregando o perfil
+  if (!isAdmin) return <Redirect href="/(tabs)/one" />; 
 
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
 
-  // Efeito para limpar a mensagem de debug após 5 segundos
   useEffect(() => {
     if (debugMsg) {
-      const timer = setTimeout(() => {
-        setDebugMsg(null);
-      }, 5000); // 5 segundos
+      const timer = setTimeout(() => setDebugMsg(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [debugMsg]);
@@ -123,7 +169,7 @@ export default function AdminScreen() {
   // DATA
   const [loading, setLoading] = useState(true);
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
-  const [voluntarios, setVoluntarios] = useState<Voluntario[]>([]);
+  const [voluntarios, setVoluntarios] = useState<UserRow[]>([]);
 
   const anosDisponiveis = useMemo(() => {
     const anos = new Set<number>();
@@ -133,6 +179,7 @@ export default function AdminScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+
     const { data: jog, error: ej } = await supabase
       .from('jogadores')
       .select('id,nome,data_nascimento,categoria,telefone,email,responsavel_nome,foto_path,doc_id_frente_path,doc_id_verso_path,termo_assinado_path,status,created_at,atualizado_em')
@@ -145,19 +192,19 @@ export default function AdminScreen() {
       setJogadores((jog ?? []) as any);
     }
 
-    const { data: vol, error: ev } = await supabase
-      .from('voluntarios')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (ev) console.log('voluntarios err:', ev);
-    setVoluntarios((vol ?? []) as any);
+    const { data: users, error: eu } = await supabase
+    .from('users')
+    .select('id, full_name, email, telefone, ativo, observacoes, type_user, created_at, updated_at') // <- type_user
+    .order('created_at', { ascending: false });
+    if (eu) console.log('users err:', eu);
+    setVoluntarios((users ?? []) as any);
 
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // FILTROS in-memory
+  // FILTROS
   const jogadoresFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     return jogadores.filter(j => {
@@ -178,12 +225,17 @@ export default function AdminScreen() {
   const voluntariosFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     return voluntarios.filter(v => {
-      if (filtroTipoVol !== 'todos' && v.tipo !== filtroTipoVol) return false;
+      if (filtroTipoVol !== 'todos' && v.type_user !== filtroTipoVol) return false; // <- type_user
       if (filtroAtivo === 'ativos' && !v.ativo) return false;
       if (filtroAtivo === 'inativos' && v.ativo) return false;
       if (!q) return true;
-      const blob = [v.nome, v.email ?? '', v.telefone ?? '', v.tipo, v.ativo ? 'ativo':'inativo']
-        .join(' ').toLowerCase();
+      const blob = [
+        v.full_name ?? '',
+        v.email ?? '',
+        v.telefone ?? '',
+        v.type_user ?? '',            // <- type_user
+        v.ativo ? 'ativo' : 'inativo'
+      ].join(' ').toLowerCase();
       return blob.includes(q);
     });
   }, [voluntarios, search, filtroTipoVol, filtroAtivo]);
@@ -273,10 +325,7 @@ export default function AdminScreen() {
         const { error } = await supabase.from('jogadores').insert(payload as any);
         err = error;
       }
-      if (err) {
-        console.log('saveJogador err:', err);
-        throw err;
-      }
+      if (err) throw err;
 
       setModalJog(false);
       await load();
@@ -299,21 +348,15 @@ export default function AdminScreen() {
     setDeleteEntityType(type);
     setDeleteModalVisible(true);
   }
-  
   function closeDeleteConfirm() {
     setItemToDelete(null);
     setDeleteEntityType(null);
     setDeleteModalVisible(false);
   }
-
   async function handleConfirmDelete() {
     if (!itemToDelete || !deleteEntityType) return;
-
-    if (deleteEntityType === 'jogador') {
-      await deletarJog(itemToDelete.id);
-    } else if (deleteEntityType === 'voluntario') {
-      await deletarVol(itemToDelete.id);
-    }
+    if (deleteEntityType === 'jogador') await deletarJog(itemToDelete.id);
+    else if (deleteEntityType === 'voluntario') await deletarVol(itemToDelete.id);
     closeDeleteConfirm();
   }
 
@@ -328,16 +371,12 @@ export default function AdminScreen() {
         setDebugMsg(msg);
         return;
       }
-      console.log('[DEL presenca count]', delPres.data?.length ?? 0);
-
       const delJog = await supabase.from('jogadores').delete().eq('id', id).select('id');
       if (delJog.error) {
         const msg = debugSbError('delete jogador', delJog.error);
         setDebugMsg(msg);
         return;
       }
-      console.log('[DEL jogadores count]', delJog.data?.length ?? 0);
-
       await load();
       setDebugMsg('✅ Jogador excluído com sucesso.');
     } catch (e: any) {
@@ -346,83 +385,126 @@ export default function AdminScreen() {
     }
   }
 
-  // ====== VOLUNTÁRIOS ======
+  // ====== VOLUNTÁRIOS (users) ======
   const [modalVol, setModalVol] = useState(false);
-  const [editVol, setEditVol] = useState<Voluntario | null>(null);
-  const [formVol, setFormVol] = useState<Partial<Voluntario>>({});
+  const [editVol, setEditVol] = useState<UserRow | null>(null);
+  const [formVol, setFormVol] = useState<Partial<UserRow>>({});
   const [savingVol, setSavingVol] = useState(false);
+  const [newPassword, setNewPassword] = useState<string>('');
 
-  function openEditVol(v?: Voluntario) {
+  function openEditVol(v?: UserRow) {
     if (v) { setEditVol(v); setFormVol(v); }
-    else { setEditVol(null); setFormVol({ ativo: true, tipo: 'outro' as TipoVol }); }
+    else { setEditVol(null); setFormVol({ ativo: true, type_user: 'comum' as TipoVol }); } // <- type_user
     setModalVol(true);
   }
 
-  async function saveVol() {
-    if (!formVol?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome do voluntário.');
-    try {
-      setSavingVol(true);
-      const payload: any = {
-        nome: formVol.nome,
-        telefone: formVol.telefone ?? null,
-        email: formVol.email ?? null,
-        tipo: (formVol.tipo as TipoVol) ?? 'outro',
-        ativo: formVol.ativo ?? true,
-        observacoes: formVol.observacoes ?? null,
-        updated_at: new Date().toISOString(),
-      };
-      let err;
-      if (editVol) {
-        const { error } = await supabase.from('voluntarios').update(payload).eq('id', editVol.id);
-        err = error;
-      } else {
-        const { error } = await supabase.from('voluntarios').insert(payload);
-        err = error;
-      }
-      if (err) throw err;
+async function saveVol() {
+  if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do voluntário.');
+  if (!formVol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
+
+  try {
+    setSavingVol(true);
+
+    if (editVol) {
+      // edição
+      const { error } = await supabase
+        .from('users')
+        .update({
+          full_name: formVol.full_name ?? null,
+          telefone: formVol.telefone ?? null,
+          email: formVol.email ?? null,
+          type_user: formVol.type_user ?? null,  // <- type_user
+          ativo: formVol.ativo ?? true,
+          observacoes: formVol.observacoes ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', editVol.id);
+      if (error) throw error;
+
+      // FECHA PRIMEIRO, limpa estado, depois alerta
       setModalVol(false);
+      setEditVol(null);
+      setFormVol({});
+      setNewPassword('');
+      await new Promise(r => setTimeout(r, 0));
+      await load();
+      setDebugMsg('✅ Dados do voluntário salvos.');
+
+      // dá um tick para o RN aplicar o setState antes do Alert
+      await new Promise((r) => setTimeout(r, 0));
+
       await load();
       Alert.alert('Sucesso', 'Dados do voluntário salvos.');
-    } catch (e: any) {
-      Alert.alert('Erro', e.message);
-    } finally {
-      setSavingVol(false);
+      return;
     }
-  }
 
-  /* ================= Excluir VOLUNTÁRIO ================= */
+    // criação com senha via edge function
+    if (!newPassword?.trim()) return Alert.alert('Atenção', 'Defina uma senha para o voluntário.');
+
+    const { data: sess } = await supabase.auth.getSession();
+    const accessToken = sess?.session?.access_token ?? '';
+
+    const { error } = await supabase.functions.invoke('create-volunteer', {
+      body: {
+        email: formVol.email,
+        password: newPassword,
+        full_name: formVol.full_name,
+        telefone: formVol.telefone,
+        type_user: formVol.type_user, // <- type_user
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (error) throw error;
+
+    // FECHA PRIMEIRO e limpa estado
+    setModalVol(false);
+    setEditVol(null);
+    setFormVol({});
+    setNewPassword('');
+
+    // dá um tick pro React aplicar o close antes de qualquer UI bloqueante
+    await new Promise(r => setTimeout(r, 0));
+
+    // recarrega lista e mostra banner de sucesso (em vez de Alert no Web)
+    await load();
+    setDebugMsg('✅ Voluntário criado com sucesso.');
+
+    await load();
+    Alert.alert('Sucesso', 'Voluntário criado com senha.');
+  } catch (e: any) {
+    Alert.alert('Erro', e?.message ?? 'Falha ao salvar voluntário.');
+  } finally {
+    setSavingVol(false);
+  }
+}
+
+  /* ================= "Excluir" VOLUNTÁRIO ================= */
   async function deletarVol(id: string) {
     console.log('[UI] deletarVol start', id);
     await debugLogSession();
+
     try {
-      const delVol = await supabase.from('voluntarios').delete().eq('id', id).select('id');
-      if (delVol.error) {
-        const msg = debugSbError('delete voluntario', delVol.error);
+      const { data: sess } = await supabase.auth.getSession();
+      const accessToken = sess?.session?.access_token ?? '';
+
+      const { error } = await supabase.functions.invoke('delete-volunteer', {
+        body: { user_id: id },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (error) {
+        const msg = debugSbError('delete-volunteer edge fn', error);
         setDebugMsg(msg);
         return;
       }
-      console.log('[DEL voluntarios count]', delVol.data?.length ?? 0);
 
       await load();
-      setDebugMsg('✅ Voluntário excluído com sucesso.');
+      setDebugMsg('✅ Voluntário excluído definitivamente.');
     } catch (e: any) {
-      const msg = debugSbError('delete voluntario catch', e);
+      const msg = debugSbError('delete voluntário catch', e);
       setDebugMsg(msg);
     }
   }
-
-  // UI helpers
-  const StatusPicker = ({ value, onChange }: { value: StatusJog, onChange: (v: StatusJog)=>void }) => (
-    <Picker selectedValue={value} onValueChange={v=>onChange(v as StatusJog)} style={styles.picker}>
-      {STATUS_OPTIONS.map(op => <Picker.Item key={op} label={op} value={op} />)}
-    </Picker>
-  );
-
-  const VolTipoPicker = ({ value, onChange }: { value: TipoVol, onChange: (v: TipoVol)=>void }) => (
-    <Picker selectedValue={value} onValueChange={v=>onChange(v as TipoVol)} style={styles.picker}>
-      {VOL_TIPOS.map(op => <Picker.Item key={op} label={op} value={op} />)}
-    </Picker>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -433,7 +515,15 @@ export default function AdminScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Banner de debug com timer e botão de fechar */}
+      {/* --- Banner de diagnóstico (remova quando não precisar) --- */}
+      <View style={{ backgroundColor:'#FFCF66', padding:8, borderRadius:6, marginBottom:8 }}>
+        <Text>authReady: {String(authReady)} | isAdmin: {String(isAdmin)} | role: {role}</Text>
+        <Text>uid: {user?.id}</Text>
+        <Text>users.type_user (DB): {inspectedRole ?? '(sem linha)'}</Text>
+        <TouchableOpacity onPress={refreshProfile}><Text style={{ textDecorationLine:'underline' }}>Recarregar perfil</Text></TouchableOpacity>
+      </View>
+
+      {/* Banner de debug com timer e botão de fechar (erros/ações) */}
       {debugMsg ? (
         <View style={styles.debugBanner}>
           <Text style={styles.debugBannerText}>{debugMsg}</Text>
@@ -518,7 +608,10 @@ export default function AdminScreen() {
             <Text style={styles.btnText}>  Cadastrar Jogador</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.btnPrimary} onPress={()=>openEditVol()}>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={() => { console.log('[UI] abrir modal voluntario'); openEditVol(); }}
+          >
             <Feather name="user-plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Cadastrar Voluntário</Text>
           </TouchableOpacity>
@@ -550,9 +643,7 @@ export default function AdminScreen() {
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
                   <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>
-                    {formatPgDateOnly(item.data_nascimento)}
-                  </Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>{formatPgDateOnly(item.data_nascimento)}</Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
@@ -564,7 +655,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'jogador')}
+                      onPress={() => openDeleteConfirm({ id: item.id, nome: item.nome }, 'jogador')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -595,8 +686,8 @@ export default function AdminScreen() {
               }
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.nome}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]}>{item.tipo}</Text>
+                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]}>{item.type_user ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
@@ -606,7 +697,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'voluntario')}
+                      onPress={() => openDeleteConfirm({ id: item.id, nome: item.full_name ?? '' }, 'voluntario')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -620,214 +711,265 @@ export default function AdminScreen() {
         </ScrollView>
       )}
 
-      {/* MODAL JOGADOR */}
-      <Modal visible={modalJog} animationType="slide" onRequestClose={()=>setModalJog(false)}>
-        <SafeAreaView style={{ flex:1, backgroundColor:'#0A1931' }}>
-          <ScrollView contentContainerStyle={{ padding:16 }}>
-            <Text style={styles.h1}>{editJog ? 'Editar Jogador' : 'Cadastrar Jogador'}</Text>
+  {/* MODAL JOGADOR */}
+  <Modal visible={modalJog} animationType="slide" onRequestClose={() => setModalJog(false)}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Text style={styles.h1}>{editJog ? 'Editar Jogador' : 'Cadastrar Jogador'}</Text>
 
-            <TextInput style={styles.input} placeholder="Nome completo" placeholderTextColor="#A0A0A0"
-              value={formJog.nome ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, nome:t}))} />
-            <TextInput style={styles.input} placeholder="Data nasc. (AAAA-MM-DD)" placeholderTextColor="#A0A0A0"
-              value={formJog.data_nascimento ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, data_nascimento:t}))} />
+        <TextInput
+          style={styles.input}
+          placeholder="Nome completo"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.nome ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, nome: t }))}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Data nasc. (AAAA-MM-DD)"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.data_nascimento ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, data_nascimento: t }))}
+        />
 
-            <Text style={{ color:'#B0B0B0', marginBottom:10 }}>
-              Categoria (ano): {formJog.data_nascimento ? new Date(formJog.data_nascimento).getFullYear() : (editJog?.categoria ?? '-')}
-            </Text>
+        <Text style={{ color: '#B0B0B0', marginBottom: 10 }}>
+          Categoria (ano): {formJog.data_nascimento ? new Date(formJog.data_nascimento).getFullYear() : (editJog?.categoria ?? '-')}
+        </Text>
 
-            <TextInput style={styles.input} placeholder="Telefone" placeholderTextColor="#A0A0A0"
-              value={formJog.telefone ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, telefone:t}))} keyboardType="phone-pad" />
-            <TextInput style={styles.input} placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
-              value={formJog.email ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, email:t}))} keyboardType="email-address" />
-            <TextInput style={styles.input} placeholder="Responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
-              value={formJog.responsavel_nome ?? ''} onChangeText={(t)=>setFormJog(s=>({...s, responsavel_nome:t}))} />
+        <TextInput
+          style={styles.input}
+          placeholder="Telefone"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.telefone ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, telefone: t }))}
+          keyboardType="phone-pad"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="E-mail (opcional)"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.email ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, email: t }))}
+          keyboardType="email-address"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Responsável (se menor de 18)"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.responsavel_nome ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, responsavel_nome: t }))}
+        />
 
-            <View style={styles.box}>
-              <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Foto do jogador</Text>
-              <TouchableOpacity style={styles.btnNeutral} onPress={()=>pick('foto')}>
-                <Feather name="image" size={18} color="#fff" />
-                <Text style={styles.btnText}>  Selecionar imagem</Text>
-              </TouchableOpacity>
-              {fotoUri
-                ? <Image source={{ uri: fotoUri }} style={styles.preview} />
-                : (formJog.foto_path ? <Image source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.foto_path).data.publicUrl }} style={styles.preview} /> : null)
-              }
-              {uploading==='foto' && <ActivityIndicator color="#00C2CB" />}
-            </View>
-
-            <View style={styles.box}>
-              <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Documento de identidade</Text>
-              <View style={{ flexDirection:'row', gap:10 }}>
-                <TouchableOpacity style={[styles.btnNeutral, { flex:1 }]} onPress={()=>pick('doc_frente')}>
-                  <Feather name="file-plus" size={18} color="#fff" />
-                  <Text style={styles.btnText}>  Frente</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btnNeutral, { flex:1 }]} onPress={()=>pick('doc_verso')}>
-                  <Feather name="file-plus" size={18} color="#fff" />
-                  <Text style={styles.btnText}>  Verso</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={{ flexDirection:'row', gap:10, marginTop:10 }}>
-                {docFrenteUri
-                  ? <Image source={{ uri: docFrenteUri }} style={[styles.preview, { flex:1 }]} />
-                  : (formJog.doc_id_frente_path ? <Image source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_frente_path).data.publicUrl }} style={[styles.preview, { flex:1 }]} /> : null)
-                }
-                {docVersoUri
-                  ? <Image source={{ uri: docVersoUri }} style={[styles.preview, { flex:1 }]} />
-                  : (formJog.doc_id_verso_path ? <Image source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_verso_path).data.publicUrl }} style={[styles.preview, { flex:1 }]} /> : null)
-                }
-              </View>
-
-              {(uploading==='doc_frente' || uploading==='doc_verso') && <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />}
-            </View>
-
-            <View style={styles.box}>
-              <Text style={{ color:'#fff', fontWeight:'bold', marginBottom:8 }}>Termo assinado</Text>
-              <TouchableOpacity style={styles.btnNeutral} onPress={()=>pick('termo')}>
-                <Feather name="file-plus" size={18} color="#fff" />
-                <Text style={styles.btnText}>  Selecionar imagem</Text>
-              </TouchableOpacity>
-              {termoUri
-                ? <Image source={{ uri: termoUri }} style={styles.preview} />
-                : (formJog.termo_assinado_path ? <Image source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.termo_assinado_path).data.publicUrl }} style={styles.preview} /> : null)
-              }
-              {uploading==='termo' && <ActivityIndicator color="#00C2CB" />}
-            </View>
-
-            <Text style={styles.label}>Status</Text>
-            <Picker
-              selectedValue={(formJog.status as StatusJog) ?? 'pre_inscrito'}
-              onValueChange={(v)=>setFormJog(s=>({...s, status: v as StatusJog}))}
-              style={styles.picker}
-            >
-              {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
-            </Picker>
-
-            <View style={{ flexDirection:'row', gap:10, marginTop:8 }}>
-              <TouchableOpacity style={[styles.btnPrimary, { flex:1 }]} onPress={saveJogador} disabled={savingJog || uploading !== null}>
-                {savingJog ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btnNeutral, { flex:1 }]} onPress={()=>setModalJog(false)}>
-                <Text style={styles.btnText}>Cancelar</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      <Modal visible={modalVol} animationType="slide" onRequestClose={() => setModalVol(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <Text style={styles.h1}>{editVol ? 'Editar Voluntário' : 'Cadastrar Voluntário'}</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Nome completo"
-              placeholderTextColor="#A0A0A0"
-              value={formVol.nome ?? ''}
-              onChangeText={(t) => setFormVol((s) => ({ ...s, nome: t }))}
+        <View style={styles.box}>
+          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Foto do jogador</Text>
+          <TouchableOpacity style={styles.btnNeutral} onPress={() => pick('foto')}>
+            <Feather name="image" size={18} color="#fff" />
+            <Text style={styles.btnText}>  Selecionar imagem</Text>
+          </TouchableOpacity>
+          {fotoUri ? (
+            <Image source={{ uri: fotoUri }} style={styles.preview} />
+          ) : formJog.foto_path ? (
+            <Image
+              source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.foto_path).data.publicUrl }}
+              style={styles.preview}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Telefone"
-              placeholderTextColor="#A0A0A0"
-              keyboardType="phone-pad"
-              value={formVol.telefone ?? ''}
-              onChangeText={(t) => setFormVol((s) => ({ ...s, telefone: t }))}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="E-mail"
-              placeholderTextColor="#A0A0A0"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={formVol.email ?? ''}
-              onChangeText={(t) => setFormVol((s) => ({ ...s, email: t }))}
-            />
-
-            <Text style={styles.label}>Tipo</Text>
-            <Picker
-              selectedValue={(formVol.tipo as TipoVol) ?? 'outro'}
-              onValueChange={(v) => setFormVol((s) => ({ ...s, tipo: v as TipoVol }))}
-              style={styles.picker}
-            >
-              {VOL_TIPOS.map((t) => (
-                <Picker.Item key={t} label={t} value={t} />
-              ))}
-            </Picker>
-
-            <Text style={styles.label}>Status</Text>
-            <Picker
-              selectedValue={formVol.ativo ?? true ? 'ativo' : 'inativo'}
-              onValueChange={(v) => setFormVol((s) => ({ ...s, ativo: v === 'ativo' }))}
-              style={styles.picker}
-            >
-              <Picker.Item label="Ativo" value="ativo" />
-              <Picker.Item label="Inativo" value="inativo" />
-            </Picker>
-
-            <TextInput
-              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-              multiline
-              numberOfLines={4}
-              placeholder="Observações"
-              placeholderTextColor="#A0A0A0"
-              value={formVol.observacoes ?? ''}
-              onChangeText={(t) => setFormVol((s) => ({ ...s, observacoes: t }))}
-            />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-              <TouchableOpacity
-                style={[styles.btnPrimary, { flex: 1 }]}
-                onPress={saveVol}
-                disabled={savingVol}
-              >
-                {savingVol ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalVol(false)}>
-                <Text style={styles.btnText}>Cancelar</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
-      <Modal
-        visible={isDeleteModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={closeDeleteConfirm}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
-            {itemToDelete && (
-              <Text style={styles.modalText}>
-                Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : 'voluntário'}{' '}
-                <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome}</Text>?
-                Essa ação não pode ser desfeita.
-              </Text>
-            )}
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={[styles.btnNeutral, { flex: 1 }]} 
-                onPress={closeDeleteConfirm}
-              >
-                <Text style={styles.btnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.btnDanger, { flex: 1 }]} 
-                onPress={handleConfirmDelete}
-              >
-                <Text style={styles.btnText}>Excluir</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          ) : null}
+          {uploading === 'foto' && <ActivityIndicator color="#00C2CB" />}
         </View>
-      </Modal>
 
+        <View style={styles.box}>
+          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Documento de identidade</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => pick('doc_frente')}>
+              <Feather name="file-plus" size={18} color="#fff" />
+              <Text style={styles.btnText}>  Frente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => pick('doc_verso')}>
+              <Feather name="file-plus" size={18} color="#fff" />
+              <Text style={styles.btnText}>  Verso</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            {docFrenteUri ? (
+              <Image source={{ uri: docFrenteUri }} style={[styles.preview, { flex: 1 }]} />
+            ) : formJog.doc_id_frente_path ? (
+              <Image
+                source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_frente_path).data.publicUrl }}
+                style={[styles.preview, { flex: 1 }]}
+              />
+            ) : null}
+
+            {docVersoUri ? (
+              <Image source={{ uri: docVersoUri }} style={[styles.preview, { flex: 1 }]} />
+            ) : formJog.doc_id_verso_path ? (
+              <Image
+                source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_verso_path).data.publicUrl }}
+                style={[styles.preview, { flex: 1 }]}
+              />
+            ) : null}
+          </View>
+
+          {(uploading === 'doc_frente' || uploading === 'doc_verso') && (
+            <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />
+          )}
+        </View>
+
+        <View style={styles.box}>
+          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Termo assinado</Text>
+          <TouchableOpacity style={styles.btnNeutral} onPress={() => pick('termo')}>
+            <Feather name="file-plus" size={18} color="#fff" />
+            <Text style={styles.btnText}>  Selecionar imagem</Text>
+          </TouchableOpacity>
+          {termoUri ? (
+            <Image source={{ uri: termoUri }} style={styles.preview} />
+          ) : formJog.termo_assinado_path ? (
+            <Image
+              source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.termo_assinado_path).data.publicUrl }}
+              style={styles.preview}
+            />
+          ) : null}
+          {uploading === 'termo' && <ActivityIndicator color="#00C2CB" />}
+        </View>
+
+        <Text style={styles.label}>Status</Text>
+        <Picker
+          selectedValue={(formJog.status as StatusJog) ?? 'pre_inscrito'}
+          onValueChange={(v) => setFormJog((s) => ({ ...s, status: v as StatusJog }))}
+          style={styles.picker}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <Picker.Item key={s} label={s} value={s} />
+          ))}
+        </Picker>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+          <TouchableOpacity
+            style={[styles.btnPrimary, { flex: 1 }]}
+            onPress={saveJogador}
+            disabled={savingJog || uploading !== null}
+          >
+            {savingJog ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalJog(false)}>
+            <Text style={styles.btnText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>
+          
+  {/* MODAL VOLUNTÁRIO (USERS) */}
+  <Modal visible={modalVol} animationType="slide" onRequestClose={() => setModalVol(false)}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Text style={styles.h1}>{editVol ? 'Editar Voluntário' : 'Cadastrar Voluntário'}</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Nome completo"
+          placeholderTextColor="#A0A0A0"
+          value={formVol.full_name ?? ''}
+          onChangeText={(t) => setFormVol((s) => ({ ...s, full_name: t }))}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Telefone"
+          placeholderTextColor="#A0A0A0"
+          keyboardType="phone-pad"
+          value={formVol.telefone ?? ''}
+          onChangeText={(t) => setFormVol((s) => ({ ...s, telefone: t }))}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="E-mail"
+          placeholderTextColor="#A0A0A0"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={formVol.email ?? ''}
+          onChangeText={(t) => setFormVol((s) => ({ ...s, email: t }))}
+        />
+
+        {!editVol && (
+          <TextInput
+            style={styles.input}
+            placeholder="Senha do voluntário"
+            placeholderTextColor="#A0A0A0"
+            secureTextEntry
+            value={newPassword}
+            onChangeText={setNewPassword}
+          />
+        )}
+
+        <Text style={styles.label}>Tipo</Text>
+        <Picker
+          selectedValue={(formVol.type_user as TipoVol) ?? 'comum'}   // <- type_user
+          onValueChange={(v) => setFormVol(s => ({ ...s, type_user: v as TipoVol }))} // <- type_user
+          style={styles.picker}
+        >
+          {VOL_TIPOS.map(t => <Picker.Item key={t} label={t} value={t} />)}
+        </Picker>
+
+        <Text style={styles.label}>Status</Text>
+        <Picker
+          selectedValue={formVol.ativo ?? true ? 'ativo' : 'inativo'}
+          onValueChange={(v) => setFormVol((s) => ({ ...s, ativo: v === 'ativo' }))}
+          style={styles.picker}
+        >
+          <Picker.Item label="Ativo" value="ativo" />
+          <Picker.Item label="Inativo" value="inativo" />
+        </Picker>
+
+        <TextInput
+          style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+          multiline
+          numberOfLines={4}
+          placeholder="Observações"
+          placeholderTextColor="#A0A0A0"
+          value={formVol.observacoes ?? ''}
+          onChangeText={(t) => setFormVol((s) => ({ ...s, observacoes: t }))}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+          <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={saveVol} disabled={savingVol}>
+            {savingVol ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalVol(false)}>
+            <Text style={styles.btnText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  </Modal>
+
+  {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+  <Modal
+    visible={isDeleteModalVisible}
+    transparent={true}
+    animationType="fade"
+    onRequestClose={closeDeleteConfirm}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
+        {itemToDelete && (
+          <Text style={styles.modalText}>
+            Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : 'voluntário'}{' '}
+            <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome}</Text>?
+            Essa ação não pode ser desfeita.
+          </Text>
+        )}
+        <View style={styles.modalActions}>
+          <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={closeDeleteConfirm}>
+            <Text style={styles.btnText}>Cancelar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnDanger, { flex: 1 }]} onPress={handleConfirmDelete}>
+            <Text style={styles.btnText}>Excluir</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
     </SafeAreaView>
   );
 }
