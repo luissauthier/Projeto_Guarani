@@ -62,7 +62,7 @@ async function debugLogSession() {
 
 /* ============== Tipos ============== */
 type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
-type TipoVol = 'comum' | 'lider' | 'coordenador'; // enum igual ao DB
+type TipoVol = 'viewer' | 'coach' | 'admin';
 
 type Jogador = {
   id: string;
@@ -94,9 +94,15 @@ type UserRow = {
 };
 
 const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo'];
-const VOL_TIPOS: TipoVol[] = ['comum','lider','coordenador'];
+const VOL_TIPOS: TipoVol[] = ['viewer', 'coach', 'admin'];
 const getCategoriaAno = (j: Jogador) =>
   j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
+
+const VOL_LABEL: Record<TipoVol, string> = {
+  viewer: 'viewer',
+  coach: 'coach',
+  admin: 'admin',
+};
 
 const formatPgDateOnly = (s?: string | null) => {
   if (!s) return '-';
@@ -393,8 +399,14 @@ export default function AdminScreen() {
   const [newPassword, setNewPassword] = useState<string>('');
 
   function openEditVol(v?: UserRow) {
-    if (v) { setEditVol(v); setFormVol(v); }
-    else { setEditVol(null); setFormVol({ ativo: true, type_user: 'comum' as TipoVol }); } // <- type_user
+    if (v) {
+      setEditVol(v);
+      setFormVol(v);
+    } else {
+      // ✅ defina um default válido do DB — escolha o que faz sentido (viewer é comum)
+      setEditVol(null);
+      setFormVol({ ativo: true, type_user: 'viewer' as TipoVol });
+    }
     setModalVol(true);
   }
 
@@ -444,17 +456,36 @@ async function saveVol() {
     const { data: sess } = await supabase.auth.getSession();
     const accessToken = sess?.session?.access_token ?? '';
 
-    const { error } = await supabase.functions.invoke('create-volunteer', {
-      body: {
-        email: formVol.email,
-        password: newPassword,
-        full_name: formVol.full_name,
-        telefone: formVol.telefone,
-        type_user: formVol.type_user, // <- type_user
-      },
+    const payload = {
+      email: formVol.email,
+      password: newPassword,
+      full_name: formVol.full_name,
+      telefone: formVol.telefone,
+      type_user: formVol.type_user as 'viewer'|'coach'|'admin',
+    };
+
+    console.log('[create-volunteer][front] payload', payload);
+
+    const { data, error } = await supabase.functions.invoke('create-volunteer', {
+      body: payload,
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (error) throw error;
+
+    console.log('[create-volunteer][front] resp', { data, error });
+
+    if (error) {
+      // Mostra a mensagem vinda da Edge
+      try {
+        const res = (error as any).context as Response;
+        const txt = await res.text();
+        let msg = txt;
+        try { msg = JSON.parse(txt)?.error ?? txt; } catch {}
+        Alert.alert('Erro ao criar voluntário', msg);
+      } catch {
+        Alert.alert('Erro ao criar voluntário', (error as any)?.message ?? 'Falha desconhecida');
+      }
+      return;
+    }
 
     // FECHA PRIMEIRO e limpa estado
     setModalVol(false);
@@ -583,10 +614,16 @@ async function saveVol() {
           <View style={styles.row}>
             <View style={styles.col}>
               <Text style={styles.label}>Tipo</Text>
-              <Picker selectedValue={filtroTipoVol} onValueChange={(v)=>setFiltroTipoVol(v as any)} style={styles.picker}>
-                <Picker.Item label="Todos" value="todos" />
-                {VOL_TIPOS.map(t => <Picker.Item key={t} label={t} value={t} />)}
-              </Picker>
+          <Picker
+            selectedValue={filtroTipoVol}
+            onValueChange={(v)=>setFiltroTipoVol(v as any)}
+            style={styles.picker}
+          >
+            <Picker.Item label="Todos" value="todos" />
+            {VOL_TIPOS.map(t => (
+              <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
+            ))}
+          </Picker>
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>Status</Text>
@@ -687,7 +724,9 @@ async function saveVol() {
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
                   <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]}>{item.type_user ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]}>
+                    {item.type_user ? VOL_LABEL[item.type_user as TipoVol] : '-'}
+                  </Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
@@ -903,11 +942,13 @@ async function saveVol() {
 
         <Text style={styles.label}>Tipo</Text>
         <Picker
-          selectedValue={(formVol.type_user as TipoVol) ?? 'comum'}   // <- type_user
-          onValueChange={(v) => setFormVol(s => ({ ...s, type_user: v as TipoVol }))} // <- type_user
+          selectedValue={(formVol.type_user as TipoVol) ?? 'viewer'}
+          onValueChange={(v) => setFormVol(s => ({ ...s, type_user: v as TipoVol }))}
           style={styles.picker}
         >
-          {VOL_TIPOS.map(t => <Picker.Item key={t} label={t} value={t} />)}
+          {VOL_TIPOS.map(t => (
+            <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
+          ))}
         </Picker>
 
         <Text style={styles.label}>Status</Text>
