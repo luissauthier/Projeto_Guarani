@@ -64,8 +64,13 @@ export default function Login() {
             >
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
             </Pressable>
-
           </View>
+          <Link href="/recuperar-senha" asChild>
+            <Pressable style={styles.forgotPasswordLink}>
+              <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
+            </Pressable>
+          </Link>
+
           <Link href="/apoio" asChild>
             <Pressable style={styles.apoioButton}>
               <Text style={styles.apoioButtonText}>Apoiar este projeto</Text>
@@ -206,5 +211,15 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textTransform: 'uppercase',
         letterSpacing: 0.8,
+    },
+    forgotPasswordLink: {
+        padding: 10,
+        alignSelf: 'center',
+        marginTop: 15,
+    },
+    forgotPasswordText: {
+        color: '#ffffff',
+        fontSize: 16,
+        textDecorationLine: 'underline',
     },
 });
