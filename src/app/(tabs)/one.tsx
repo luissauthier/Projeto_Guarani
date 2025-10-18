@@ -305,6 +305,7 @@ export default function TreinosScreen() {
             data_hora: ts,
             local: local || null,
             descricao: descricao || null,
+            treinador_id: user.id, // Isso garante que o treino tenha um "dono"
           })
           .select('*')
           .single();
@@ -351,18 +352,20 @@ export default function TreinosScreen() {
         <Text style={styles.title}>{dt.toLocaleString()}</Text>
         {!!item.local && <Text style={styles.line}>Local: {item.local}</Text>}
         {!!item.descricao && <Text style={styles.line}>{item.descricao}</Text>}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
-            <Text style={styles.btnText}>Editar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.btnDanger}
-            onPress={() => openDeleteConfirm(item)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={styles.btnText}>Excluir</Text>
-          </TouchableOpacity>
-        </View>
+        {(isAdmin || isCoach) && (
+    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+      <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
+        <Text style={styles.btnText}>Editar</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.btnDanger}
+        onPress={() => openDeleteConfirm(item)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={styles.btnText}>Excluir</Text>
+      </TouchableOpacity>
+    </View>
+  )}
       </View>
     );
   }
