@@ -30,6 +30,12 @@ export default function Login() {
         <View style={styles.container}>
           <View style={styles.header}>
             <Text style={styles.logoText}>Projeto Guarani</Text>
+
+            <Link href="/(auth)/signup" asChild>
+              <Pressable style={styles.inscricaoButton}>
+                <Text style={styles.inscricaoButtonText}>Inscrição</Text>
+              </Pressable>
+            </Link>
           </View>
 
           <View style={styles.formContainer}>
@@ -59,11 +65,12 @@ export default function Login() {
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
             </Pressable>
 
-            {/* Você está usando this route como pré-inscrição. OK! */}
-            <Link href='/(auth)/signup' style={styles.link}>
-              <Text style={styles.linkText}>Pré-inscrição de jogador</Text>
-            </Link>
           </View>
+          <Link href="/apoio" asChild>
+            <Pressable style={styles.apoioButton}>
+              <Text style={styles.apoioButtonText}>Apoiar este projeto</Text>
+            </Pressable>
+          </Link>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -85,17 +92,36 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     header: {
-        alignItems: 'center',
-        marginBottom: 50, // Mais espaço para o cabeçalho
+        flexDirection: 'row', // Para alinhar lado a lado
+        justifyContent: 'space-between', // Logo na esquerda, botão na direita
+        alignItems: 'center', // Alinhados verticalmente
+        marginBottom: 40,
+        paddingHorizontal: 10,
+        width: '100%', // Garante que o header ocupe toda a largura
     },
     logoText: {
-        fontSize: 48, // Tamanho maior para o logo
-        fontWeight: '800', // Mais encorpado
-        color: '#FFF', // Branco puro
-        marginBottom: 10,
-        textShadowColor: 'rgba(0, 0, 0, 0.2)', // Sombra sutil para profundidade
-        textShadowOffset: { width: 2, height: 2 },
-        textShadowRadius: 5,
+        fontSize: 36, // Diminuído de 48 para caber melhor
+        fontWeight: 'bold',
+        color: '#ffffff',
+        textShadowColor: 'rgba(0, 0, 0, 0.75)',
+        textShadowOffset: { width: -1, height: 1 },
+        textShadowRadius: 10,
+    },
+    inscricaoButton: {
+        backgroundColor: '#ffffff', // Usando o verde principal do app
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 10,
+        elevation: 3, // Sombra (Android)
+        shadowColor: '#000', // Sombra (iOS)
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+    },
+    inscricaoButtonText: {
+        color: '#000000',
+        fontWeight: '600',
+        fontSize: 16,
     },
     slogan: {
         fontSize: 20, // Tamanho da fonte ajustado
@@ -158,5 +184,27 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         textDecorationLine: 'underline', // Sublinhado para indicar que é um link
+    },
+    apoioButton: {
+        backgroundColor: '#ffffff', // Mesmo estilo do botão "Entrar"
+        paddingVertical: 18,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 40, // Espaço para separar do formulário
+        width: '90%', // Mesma largura do formContainer
+        alignSelf: 'center', // Para centralizar
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    apoioButtonText: {
+        color: '#000000', // Mesmo estilo do texto "Entrar"
+        fontSize: 18,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
     },
 });
