@@ -97,6 +97,39 @@ export default function TreinosScreen() {
   const [yearTo, setYearTo] = useState<string>('');
   const [searchJog, setSearchJog] = useState('');
 
+  // --- contagem de presenças por treino ---
+  const [presCount, setPresCount] = useState<Record<string, number>>({});
+
+  // Sanitiza input pra só dígitos (0–9) e handlers dos anos
+  function onlyDigits(v: string) {
+    return v.replace(/\D/g, '');
+  }
+  function handleYearFrom(v: string) {
+    setYearFrom(onlyDigits(v));
+  }
+  function handleYearTo(v: string) {
+    setYearTo(onlyDigits(v));
+  }
+
+  const loadPresencasCount = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('presenca')
+      .select('treino_id');
+
+    if (error) {
+      console.log('[presenca][count] erro:', error);
+      setPresCount({});
+      return;
+    }
+
+    const map: Record<string, number> = {};
+    (data ?? []).forEach((row: any) => {
+      const id = row.treino_id as string;
+      map[id] = (map[id] ?? 0) + 1;
+    });
+    setPresCount(map);
+  }, []);
+
   const loadTreinos = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -109,8 +142,10 @@ export default function TreinosScreen() {
     } else {
       setTreinos((data ?? []) as Treino[]);
     }
+
+    await loadPresencasCount(); // atualiza contagem junto
     setLoading(false);
-  }, []);
+  }, [loadPresencasCount]);
 
   useEffect(() => { loadTreinos(); }, [loadTreinos]);
 
@@ -194,12 +229,21 @@ export default function TreinosScreen() {
 
   const jogadoresFiltrados = useMemo(() => {
     let list = jogadores;
+
     const yf = yearFrom ? Number(yearFrom) : null;
     const yt = yearTo ? Number(yearTo) : null;
-    if (yf) list = list.filter(j => j.categoria && j.categoria >= yf);
-    if (yt) list = list.filter(j => j.categoria && j.categoria <= yt);
+
+    const min = yf != null && yt != null ? Math.min(yf, yt) : (yf ?? yt);
+    const max = yf != null && yt != null ? Math.max(yf, yt) : (yt ?? yf);
+
+    if (min != null) list = list.filter(j => j.categoria != null && j.categoria >= min);
+    if (max != null) list = list.filter(j => j.categoria != null && j.categoria <= max);
+
     const q = searchJog.trim().toLowerCase();
-    if (q) list = list.filter(j => j.nome.toLowerCase().includes(q) || String(j.categoria ?? '').includes(q));
+    if (q) list = list.filter(j =>
+      j.nome.toLowerCase().includes(q) ||
+      String(j.categoria ?? '').includes(q)
+    );
     return list;
   }, [jogadores, yearFrom, yearTo, searchJog]);
 
@@ -228,7 +272,6 @@ export default function TreinosScreen() {
 
   // --- CORREÇÃO: Função para salvar/atualizar presenças ---
   async function updatePresencas(treinoId: string) {
-    // 1. Apaga todas as presenças antigas deste treino
     const { error: deleteError } = await supabase
       .from('presenca')
       .delete()
@@ -238,10 +281,9 @@ export default function TreinosScreen() {
       throw new Error(`Erro ao apagar presenças antigas: ${deleteError.message}`);
     }
 
-    // 2. Insere as novas presenças selecionadas
     const selecionados = Object.keys(sel).filter((id) => sel[id]);
     if (selecionados.length === 0) {
-      return; // Se não houver ninguém selecionado, apenas retorna
+      return;
     }
 
     const rows = selecionados.map((jid) => ({
@@ -290,11 +332,10 @@ export default function TreinosScreen() {
             throw new Error("Não foi possível encontrar o treino para atualizar.");
         }
 
-        // Atualiza presenças
         await updatePresencas(updatedTreino.id);
         
         setModal(false);
-        await loadTreinos(); // Recarrega a lista principal
+        await loadTreinos();
         Alert.alert('Sucesso', 'Treino atualizado.');
 
       } else {
@@ -305,7 +346,7 @@ export default function TreinosScreen() {
             data_hora: ts,
             local: local || null,
             descricao: descricao || null,
-            treinador_id: user.id, // Isso garante que o treino tenha um "dono"
+            treinador_id: user.id,
           })
           .select('*')
           .single();
@@ -313,11 +354,10 @@ export default function TreinosScreen() {
         if (error) throw error;
         if (!novo) throw new Error("Falha ao criar o treino.");
 
-        // Insere as presenças para o novo treino
         await updatePresencas(novo.id);
         
         setModal(false);
-        await loadTreinos(); // Recarrega a lista principal
+        await loadTreinos();
         Alert.alert('Sucesso', 'Treino criado.');
       }
     } catch (e: any) {
@@ -349,25 +389,30 @@ export default function TreinosScreen() {
 
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);
+    const presentes = presCount[item.id] ?? 0;
+
     return (
       <View style={styles.card}>
         <Text style={styles.title}>{dt.toLocaleString()}</Text>
         {!!item.local && <Text style={styles.line}>Local: {item.local}</Text>}
         {!!item.descricao && <Text style={styles.line}>{item.descricao}</Text>}
+        <Text style={[styles.line, { fontWeight: '600' }]}>
+          Presenças: {presentes}
+        </Text>
         {(isAdmin || isCoach) && (
-    <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-      <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
-        <Text style={styles.btnText}>Editar</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.btnDanger}
-        onPress={() => openDeleteConfirm(item)}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={styles.btnText}>Excluir</Text>
-      </TouchableOpacity>
-    </View>
-  )}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+            <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
+              <Text style={styles.btnText}>Editar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btnDanger}
+              onPress={() => openDeleteConfirm(item)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.btnText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -448,15 +493,15 @@ export default function TreinosScreen() {
                   placeholder="Ano de (ex: 2008)"
                   placeholderTextColor="#A0A0A0"
                   value={yearFrom}
-                  onChangeText={setYearFrom}
+                  onChangeText={handleYearFrom}
                   keyboardType="numeric"
                 />
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
-                  placeholder="Ano até (ex: 2015)"
+                  placeholder="Ano até (ex: 2012)"
                   placeholderTextColor="#A0A0A0"
                   value={yearTo}
-                  onChangeText={setYearTo}
+                  onChangeText={handleYearTo}
                   keyboardType="numeric"
                 />
               </View>
@@ -594,7 +639,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   modalText: {
-    color: '#B0B0B0',
+    color: '#B0A0B0',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 24,
