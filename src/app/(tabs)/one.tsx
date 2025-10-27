@@ -322,7 +322,9 @@ export default function TreinosScreen() {
       }
     } catch (e: any) {
       console.log('[save] erro:', e);
+      const errorMsg = debugSbError('salvar treino', e);
       Alert.alert('Erro', e?.message ?? 'Falha ao salvar treino.');
+      Alert.alert('Erro ao Salvar Treino', errorMsg);
     } finally {
       setSaving(false);
     }

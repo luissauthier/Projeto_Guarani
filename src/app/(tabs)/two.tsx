@@ -338,6 +338,10 @@ export default function AdminScreen() {
       Alert.alert('Sucesso', 'Dados do jogador salvos.');
     } catch (e: any) {
       Alert.alert('Erro', e.message ?? 'Falha ao salvar.');
+      console.log('[saveJogador] erro:', e);
+      // Usando sua função helper para formatar a mensagem de erro completa
+      const errorMsg = debugSbError('salvar jogador', e);
+      Alert.alert('Erro ao Salvar Jogador', errorMsg);
     } finally {
       setSavingJog(false);
       setUploading(null);
@@ -462,6 +466,7 @@ async function saveVol() {
       full_name: formVol.full_name,
       telefone: formVol.telefone,
       type_user: formVol.type_user as 'viewer'|'coach'|'admin',
+      observacoes: formVol.observacoes ?? null,
     };
 
     console.log('[create-volunteer][front] payload', payload);
@@ -503,7 +508,10 @@ async function saveVol() {
     await load();
     Alert.alert('Sucesso', 'Voluntário criado com senha.');
   } catch (e: any) {
-    Alert.alert('Erro', e?.message ?? 'Falha ao salvar voluntário.');
+    console.log('[saveVol] erro:', e);
+      // Usando sua função helper para formatar a mensagem de erro completa
+      const errorMsg = debugSbError('salvar voluntário', e);
+      Alert.alert('Erro ao Salvar Voluntário', errorMsg);
   } finally {
     setSavingVol(false);
   }
