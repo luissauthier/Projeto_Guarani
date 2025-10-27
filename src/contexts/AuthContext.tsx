@@ -3,7 +3,7 @@ import { User } from '@supabase/supabase-js';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { router } from 'expo-router';
-
+import { Alert } from 'react-native';
 type Role = 'admin' | 'coach' | 'viewer';
 
 interface AppUser extends User { type_user?: Role; }
@@ -30,12 +30,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     console.log('[Auth] fetchProfile for uid:', sessionUser.id, 'email:', sessionUser.email);
     const { data, error } = await supabase
       .from('users')
-      .select('type_user')
+      .select('type_user, ativo')
       .eq('id', sessionUser.id)
       .maybeSingle();
 
     if (error) console.log('[Auth] fetchProfile error:', error);
     console.log('[Auth] users row:', data);
+    
+    if (data && data.ativo === false) {
+      console.log('[Auth] Usuário inativo tentando logar. Deslogando...');
+      Alert.alert(
+        'Acesso Negado',
+        'Sua conta está marcada como inativa. Por favor, entre em contato com um administrador.'
+      );
+      await supabase.auth.signOut();
+      return; // Interrompe o processo de login
+    }
 
     const r = (data?.type_user as Role) ?? 'viewer';
     console.log('[Auth] resolved role:', r);

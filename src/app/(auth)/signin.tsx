@@ -8,17 +8,62 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function handleSignIn() {
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+    setLoading(true);
+    setErrorMsg(null); // Limpa erros antigos
 
-      // NÃO force rota aqui. O AuthContext já vai redirecionar.
-      // Se quiser forçar, use: router.replace('/(tabs)/treinos');
+    try {
+      // 1. Tenta fazer o login
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (signInError) {
+        // Erro de "Senha inválida" ou "Usuário não existe"
+        throw signInError;
+      }
+
+      if (signInData.user) {
+        // 2. Login OK! Agora verifica se o usuário está ativo na tabela 'users'
+        const { data: userDataList, error: userError } = await supabase
+          .from('users')
+          .select('ativo')
+          .eq('id', signInData.user.id); // <-- REMOVIDO o .single()
+
+        if (userError) {
+          // Erro na consulta
+          await supabase.auth.signOut();
+          throw new Error("Não foi possível verificar seu perfil. " + userError.message);
+        }
+
+        // Pega o primeiro usuário da lista
+        const userData = userDataList ? userDataList[0] : null; 
+
+        if (!userData) {
+          // Não achou o perfil? Melhor deslogar por segurança.
+          await supabase.auth.signOut();
+          throw new Error("Perfil de usuário não encontrado.");
+        }
+        
+        // 3. A VERIFICAÇÃO PRINCIPAL
+        if (userData && userData.ativo === false) {
+          // Usuário está INATIVO
+          await supabase.auth.signOut(); // Desloga imediatamente
+          setErrorMsg('Usuário inativo. Entre em contato com um administrador.');
+        } else {
+          // Usuário está ATIVO, deixa o AuthContext redirecionar
+        }
+      }
+
     } catch (e: any) {
-      Alert.alert('Erro de Login', e.message);
+      // Pega erros do signInError ou do userError
+      console.error('[handleSignIn] Erro:', e.message);
+      // Mostra a mensagem de erro na tela
+      if (e.message.includes('Invalid login credentials')) {
+        setErrorMsg('E-mail ou senha inválidos.');
+      } else {
+        setErrorMsg(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -64,6 +109,9 @@ export default function Login() {
             >
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
             </Pressable>
+            {errorMsg && (
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            )}
           </View>
           <Link href="/recuperar-senha" asChild>
             <Pressable style={styles.forgotPasswordLink}>
@@ -221,5 +269,13 @@ const styles = StyleSheet.create({
         color: '#ffffff',
         fontSize: 16,
         textDecorationLine: 'underline',
+    },
+    errorText: {
+        color: '#FF6B6B', // Um tom de vermelho claro
+        fontSize: 16,
+        fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 15,
+        paddingHorizontal: 10,
     },
 });
