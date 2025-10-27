@@ -36,16 +36,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     if (error) console.log('[Auth] fetchProfile error:', error);
     console.log('[Auth] users row:', data);
-    
-    if (data && data.ativo === false) {
-      console.log('[Auth] Usuário inativo tentando logar. Deslogando...');
-      Alert.alert(
-        'Acesso Negado',
-        'Sua conta está marcada como inativa. Por favor, entre em contato com um administrador.'
-      );
-      await supabase.auth.signOut();
-      return; // Interrompe o processo de login
-    }
 
     const r = (data?.type_user as Role) ?? 'viewer';
     console.log('[Auth] resolved role:', r);

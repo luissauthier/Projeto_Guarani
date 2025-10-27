@@ -1,68 +1,58 @@
 import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000); // 5 segundos
+
+      // Limpa o timer se o componente for desmontado ou a notificação mudar
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   async function handleSignIn() {
     setLoading(true);
-    setErrorMsg(null); // Limpa erros antigos
+    setNotification(null); // Limpa notificações antigas
 
     try {
       // 1. Tenta fazer o login
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       
       if (signInError) {
-        // Erro de "Senha inválida" ou "Usuário não existe"
+        // Se houver um erro, ele será capturado aqui
         throw signInError;
       }
 
-      if (signInData.user) {
-        // 2. Login OK! Agora verifica se o usuário está ativo na tabela 'users'
-        const { data: userDataList, error: userError } = await supabase
-          .from('users')
-          .select('ativo')
-          .eq('id', signInData.user.id); // <-- REMOVIDO o .single()
-
-        if (userError) {
-          // Erro na consulta
-          await supabase.auth.signOut();
-          throw new Error("Não foi possível verificar seu perfil. " + userError.message);
-        }
-
-        // Pega o primeiro usuário da lista
-        const userData = userDataList ? userDataList[0] : null; 
-
-        if (!userData) {
-          // Não achou o perfil? Melhor deslogar por segurança.
-          await supabase.auth.signOut();
-          throw new Error("Perfil de usuário não encontrado.");
-        }
-        
-        // 3. A VERIFICAÇÃO PRINCIPAL
-        if (userData && userData.ativo === false) {
-          // Usuário está INATIVO
-          await supabase.auth.signOut(); // Desloga imediatamente
-          setErrorMsg('Usuário inativo. Entre em contato com um administrador.');
-        } else {
-          // Usuário está ATIVO, deixa o AuthContext redirecionar
-        }
-      }
+      // Se NÃO houver erro, o login foi um sucesso E o usuário está ativo.
+      // O AuthContext vai assumir e redirecionar (não precisamos fazer mais nada).
 
     } catch (e: any) {
-      // Pega erros do signInError ou do userError
       console.error('[handleSignIn] Erro:', e.message);
-      // Mostra a mensagem de erro na tela
-      if (e.message.includes('Invalid login credentials')) {
-        setErrorMsg('E-mail ou senha inválidos.');
+      
+      // 2. Verifica o erro genérico (que sabemos ser o "usuário inativo")
+      if (e.message.includes('Database error granting user')) { // <-- MUDANÇA AQUI
+        setNotification('Usuário inativo. Entre em contato com um administrador.');
+      
+      // 3. Verifica erros de login normais
+      } else if (e.message.includes('Invalid login credentials')) {
+        setNotification('E-mail ou senha inválidos.');
+      
+      // 4. Outros erros
       } else {
-        setErrorMsg(e.message);
+        // Se for outro erro, mostramos a mensagem que vier
+        setNotification(e.message);
       }
     } finally {
       setLoading(false);
@@ -82,6 +72,14 @@ export default function Login() {
               </Pressable>
             </Link>
           </View>
+          {notification && (
+            <View style={styles.notificationBanner}>
+              <Text style={styles.notificationText}>{notification}</Text>
+              <Pressable onPress={() => setNotification(null)} style={{ padding: 5 }}>
+                <Feather name="x" size={20} color="#8B0000" />
+              </Pressable>
+            </View>
+          )}
 
           <View style={styles.formContainer}>
             <TextInput
@@ -109,9 +107,6 @@ export default function Login() {
             >
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
             </Pressable>
-            {errorMsg && (
-              <Text style={styles.errorText}>{errorMsg}</Text>
-            )}
           </View>
           <Link href="/recuperar-senha" asChild>
             <Pressable style={styles.forgotPasswordLink}>
@@ -270,12 +265,24 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textDecorationLine: 'underline',
     },
-    errorText: {
-        color: '#FF6B6B', // Um tom de vermelho claro
-        fontSize: 16,
-        fontWeight: '500',
-        textAlign: 'center',
-        marginTop: 15,
-        paddingHorizontal: 10,
+    notificationBanner: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: '#FFCDD2', // Fundo vermelho claro (tema de erro)
+      paddingVertical: 12,
+      paddingHorizontal: 15,
+      borderRadius: 10,
+      width: '100%',
+      marginBottom: 20, // Espaço antes do formulário
+      borderWidth: 1,
+      borderColor: '#E57373', // Borda vermelha mais escura
+    },
+    notificationText: {
+      color: '#8B0000', // Texto vermelho escuro
+      fontWeight: '500',
+      fontSize: 15,
+      flex: 1, // Permite que o texto quebre a linha
+      marginRight: 10,
     },
 });
