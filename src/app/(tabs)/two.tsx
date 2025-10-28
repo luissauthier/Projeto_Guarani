@@ -622,19 +622,13 @@ async function saveVol() {
         />
 
         {tab==='jogadores' ? (
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Status</Text>
-              <Picker selectedValue={filtroStatus} onValueChange={(v)=>setFiltroStatus(v as any)} style={styles.picker}>
-                <Picker.Item label="Todos" value="todos" />
-                {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
-              </Picker>
-            </View>
-            <View style={styles.col}>
+          <View style={styles.rowWrap}>
+            {/* Categoria (ano) — flexível */}
+            <View style={styles.colCategory}>
               <Text style={styles.label}>Categoria (ano)</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flexDirection: 'row', columnGap: 10 }}>
                 <TextInput
-                  style={[styles.input, { flex: 1 }]}
+                  style={[styles.input, styles.shrink, { flex: 1 }]}
                   placeholder="Ano de (ex: 2008)"
                   placeholderTextColor="#A0A0A0"
                   keyboardType="numeric"
@@ -642,7 +636,7 @@ async function saveVol() {
                   onChangeText={handleYearFrom}
                 />
                 <TextInput
-                  style={[styles.input, { flex: 1 }]}
+                  style={[styles.input, styles.shrink, { flex: 1 }]}
                   placeholder="Ano até (ex: 2012)"
                   placeholderTextColor="#A0A0A0"
                   keyboardType="numeric"
@@ -650,6 +644,19 @@ async function saveVol() {
                   onChangeText={handleYearTo}
                 />
               </View>
+            </View>
+
+            {/* Status — compacto, vem por último */}
+            <View style={styles.colStatus}>
+              <Text style={styles.label}>Status</Text>
+              <Picker
+                selectedValue={filtroStatus}
+                onValueChange={(v)=>setFiltroStatus(v as any)}
+                style={[styles.picker, styles.shrink]}
+              >
+                <Picker.Item label="Todos" value="todos" />
+                {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
+              </Picker>
             </View>
           </View>
         ) : (
@@ -1174,5 +1181,29 @@ const styles = StyleSheet.create({
     color: '#000',
     flex: 1,
     marginRight: 8,
+  },
+  rowWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 10,
+    rowGap: 10,
+    alignItems: 'flex-end',
+  },
+
+  // permite que inputs/picker encolham no web (senão quebram cedo)
+  shrink: { minWidth: 0 },
+
+  // Categoria ocupa o restante da linha, encolhe quando preciso
+  colCategory: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 300,     // mantém dois inputs confortáveis; ajuste se quiser
+  },
+
+  // Status com largura fixa (compacto). Fica na mesma linha enquanto houver espaço.
+  colStatus: {
+    width: 220,        // 200–240 é um bom range
+    flexGrow: 0,
+    flexShrink: 0,
   },
 });
