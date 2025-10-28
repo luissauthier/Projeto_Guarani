@@ -175,7 +175,14 @@ export default function AdminScreen() {
   // BUSCA + FILTROS
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<StatusJog | 'todos'>('todos');
-  const [filtroCategoria, setFiltroCategoria] = useState<number | 'todos'>('todos');
+
+  // novos filtros por ano (de/até)
+  const [yearFrom, setYearFrom] = useState<string>('');
+  const [yearTo, setYearTo] = useState<string>('');
+
+  function onlyDigits(v: string) { return v.replace(/\D/g, ''); }
+  function handleYearFrom(v: string) { setYearFrom(onlyDigits(v)); }
+  function handleYearTo(v: string) { setYearTo(onlyDigits(v)); }
   const [filtroTipoVol, setFiltroTipoVol] = useState<TipoVol | 'todos'>('todos');
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('todos');
 
@@ -220,20 +227,26 @@ export default function AdminScreen() {
   // FILTROS
   const jogadoresFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
+
+    // Só filtra quando tiver exatamente 4 dígitos
+    const yf = yearFrom.length === 4 ? Number(yearFrom) : null; // DE (>=)
+    const yt = yearTo.length === 4 ? Number(yearTo) : null;     // ATÉ (<=)
+
     return jogadores.filter(j => {
       if (filtroStatus !== 'todos' && j.status !== filtroStatus) return false;
-      if (filtroCategoria !== 'todos') {
-        const cat = getCategoriaAno(j);
-        if (cat !== filtroCategoria) return false;
-      }
+
+      const cat = getCategoriaAno(j);
+      if (yf !== null && !(cat != null && cat >= yf)) return false;
+      if (yt !== null && !(cat != null && cat <= yt)) return false;
+
       if (!q) return true;
-      const catStr = getCategoriaAno(j)?.toString() ?? '';
+      const catStr = cat?.toString() ?? '';
       const blob = [j.nome, j.email ?? '', j.telefone ?? '', catStr, j.status, j.responsavel_nome ?? '']
         .join(' ')
         .toLowerCase();
       return blob.includes(q);
     });
-  }, [jogadores, search, filtroStatus, filtroCategoria]);
+  }, [jogadores, search, filtroStatus, yearFrom, yearTo]);
 
   const voluntariosFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -619,17 +632,24 @@ async function saveVol() {
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>Categoria (ano)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex.: 2010"
-                placeholderTextColor="#A0A0A0"
-                keyboardType="numeric"
-                value={filtroCategoria === 'todos' ? '' : String(filtroCategoria)}
-                onChangeText={(v) => {
-                  const n = Number(v);
-                  setFiltroCategoria(!v ? 'todos' : isNaN(n) ? 'todos' : n);
-                }}
-              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Ano de (ex: 2008)"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={yearFrom}
+                  onChangeText={handleYearFrom}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Ano até (ex: 2012)"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={yearTo}
+                  onChangeText={handleYearTo}
+                />
+              </View>
             </View>
           </View>
         ) : (
@@ -1086,7 +1106,7 @@ const styles = StyleSheet.create({
   col: { flex:1 },
   label: { color:'#E0E0E0', marginBottom:6 },
 
-  picker: { backgroundColor:'#203A4A', borderRadius:10, color:'#fff', marginBottom:10, borderWidth:1, borderColor:'#4A6572' },
+  picker: { height:50, backgroundColor:'#203A4A', borderRadius:10, color:'#fff', marginBottom:10, borderWidth:1, borderColor:'#4A6572' },
 
   card: { backgroundColor:'#1E2F47', borderRadius:12, padding:12, marginBottom:12, borderWidth:1, borderColor:'#3A506B' },
   title: { color:'#FFF', fontWeight:'bold', fontSize:16, marginBottom:4 },
