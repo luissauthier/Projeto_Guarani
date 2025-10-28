@@ -47,6 +47,13 @@ function WebModal({
   );
 }
 
+function yearFromDateOnly(iso?: string | null): number | null {
+  if (!iso) return null;
+  // espera "YYYY-MM-DD" ou "YYYY-M-D" — pega os 4 primeiros dígitos
+  const m = /^(\d{4})/.exec(iso);
+  return m ? Number(m[1]) : null;
+}
+
 async function debugLogSession() {
   try {
     const { data } = await supabase.auth.getSession();
@@ -309,9 +316,16 @@ export default function AdminScreen() {
       const doc_id_verso_path = await uploadIfNeeded(docVersoUri, formJog.doc_id_verso_path ?? null, 'doc_verso');
       const termo_assinado_path = await uploadIfNeeded(termoUri, formJog.termo_assinado_path ?? null, 'termo');
 
+      // calcula a categoria (ano) de forma segura
+      const categoriaAno: number | null =
+        (formJog.categoria as number | null) ??
+        yearFromDateOnly(formJog.data_nascimento) ??
+        null;
+
       const payload: Partial<Jogador> = {
         nome: formJog.nome,
         data_nascimento: formJog.data_nascimento ?? null,
+        categoria: categoriaAno, 
         telefone: formJog.telefone ?? null,
         email: formJog.email ?? null,
         responsavel_nome: formJog.responsavel_nome ?? null,
@@ -780,8 +794,9 @@ async function saveVol() {
         />
 
         <Text style={{ color: '#B0B0B0', marginBottom: 10 }}>
-          Categoria (ano): {formJog.data_nascimento ? new Date(formJog.data_nascimento).getFullYear() : (editJog?.categoria ?? '-')}
+          Categoria (ano): {yearFromDateOnly(formJog.data_nascimento) ?? (editJog?.categoria ?? '-')}
         </Text>
+
 
         <TextInput
           style={styles.input}

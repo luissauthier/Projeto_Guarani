@@ -230,20 +230,21 @@ export default function TreinosScreen() {
   const jogadoresFiltrados = useMemo(() => {
     let list = jogadores;
 
-    const yf = yearFrom ? Number(yearFrom) : null;
-    const yt = yearTo ? Number(yearTo) : null;
+    // só considera o filtro quando tiver exatamente 4 dígitos
+    const yf = yearFrom.length === 4 ? Number(yearFrom) : null; // DE (>=)
+    const yt = yearTo.length === 4 ? Number(yearTo) : null;     // ATÉ (<=)
 
-    const min = yf != null && yt != null ? Math.min(yf, yt) : (yf ?? yt);
-    const max = yf != null && yt != null ? Math.max(yf, yt) : (yt ?? yf);
-
-    if (min != null) list = list.filter(j => j.categoria != null && j.categoria >= min);
-    if (max != null) list = list.filter(j => j.categoria != null && j.categoria <= max);
+    // aplica limites de forma independente, sem inverter automaticamente
+    if (yf !== null) list = list.filter(j => j.categoria != null && j.categoria >= yf);
+    if (yt !== null) list = list.filter(j => j.categoria != null && j.categoria <= yt);
 
     const q = searchJog.trim().toLowerCase();
-    if (q) list = list.filter(j =>
-      j.nome.toLowerCase().includes(q) ||
-      String(j.categoria ?? '').includes(q)
-    );
+    if (q) {
+      list = list.filter(j =>
+        j.nome.toLowerCase().includes(q) ||
+        String(j.categoria ?? '').includes(q)
+      );
+    }
     return list;
   }, [jogadores, yearFrom, yearTo, searchJog]);
 
