@@ -9,6 +9,8 @@ import { router, Redirect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 /* ============== Helpers (fora do componente, não usam hooks) ============== */
 function debugSbError(ctx: string, error: any) {
@@ -45,6 +47,54 @@ function WebModal({
       <View style={styles.modalContent}>{children}</View>
     </View>
   );
+}
+
+// Escapa ; converte undefined/null -> ''
+function csvEscape(v: any) {
+  const s = v === null || v === undefined ? '' : String(v);
+  // Se contém aspas, vírgula, ; ou quebras de linha, envolve em aspas e duplica aspas internas
+  const needsQuote = /[";\n,\r]/.test(s);
+  if (!needsQuote) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+// Gera CSV a partir de headers e rows (obj)
+function toCsv(
+  rows: any[],
+  headers: { key: string; label: string; map?: (row: any) => any }[],
+  delimiter = ';' // ; fica melhor para abrir no Excel pt-BR
+) {
+  const head = headers.map(h => csvEscape(h.label)).join(delimiter);
+  const body = rows
+    .map(row =>
+      headers
+        .map(h => csvEscape(h.map ? h.map(row) : row[h.key]))
+        .join(delimiter)
+    )
+    .join('\n');
+  return head + '\n' + body + '\n';
+}
+
+// Baixa/Compartilha arquivo
+async function downloadCsv(filename: string, csv: string) {
+  if (Platform.OS === 'web') {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } else {
+    const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory!;
+    const path = dir + filename;
+    await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+    await Sharing.shareAsync(path, {
+      mimeType: 'text/csv',
+      dialogTitle: 'Exportar CSV',
+      UTI: 'public.comma-separated-values-text',
+    });
+  }
 }
 
 function yearFromDateOnly(iso?: string | null): number | null {
@@ -265,6 +315,44 @@ export default function AdminScreen() {
       return blob.includes(q);
     });
   }, [voluntarios, search, filtroTipoVol, filtroAtivo]);
+
+  async function exportJogadoresCsv() {
+    if (!jogadoresFiltrados.length) {
+      Alert.alert('Exportar', 'Nenhum jogador para exportar.');
+      return;
+    }
+    const headers = [
+      { key: 'nome', label: 'Nome' },
+      { key: 'data_nascimento', label: 'Nascimento' },
+      { key: 'categoria', label: 'Categoria', map: (j: Jogador) => getCategoriaAno(j) ?? '' },
+      { key: 'status', label: 'Status' },
+      { key: 'telefone', label: 'Telefone' },
+      { key: 'email', label: 'E-mail' },
+      { key: 'responsavel_nome', label: 'Responsável' },
+      { key: 'created_at', label: 'Criado em' },
+      { key: 'id', label: 'ID' },
+    ];
+    const csv = toCsv(jogadoresFiltrados, headers);
+    await downloadCsv(`jogadores_${new Date().toISOString().slice(0,10)}.csv`, csv);
+  }
+
+  async function exportVoluntariosCsv() {
+    if (!voluntariosFiltrados.length) {
+      Alert.alert('Exportar', 'Nenhum voluntário para exportar.');
+      return;
+    }
+    const headers = [
+      { key: 'full_name', label: 'Nome' },
+      { key: 'email', label: 'E-mail' },
+      { key: 'telefone', label: 'Telefone' },
+      { key: 'type_user', label: 'Tipo' },
+      { key: 'ativo', label: 'Status', map: (v: UserRow) => (v.ativo ? 'ativo' : 'inativo') },
+      { key: 'created_at', label: 'Criado em' },
+      { key: 'id', label: 'ID' },
+    ];
+    const csv = toCsv(voluntariosFiltrados, headers);
+    await downloadCsv(`voluntarios_${new Date().toISOString().slice(0,10)}.csv`, csv);
+  }
 
   // ====== MODAIS JOGADOR ======
   const [modalJog, setModalJog] = useState(false);
@@ -581,14 +669,6 @@ async function saveVol() {
         </TouchableOpacity>
       </View>
 
-      {/* --- Banner de diagnóstico (remova quando não precisar) --- */}
-      <View style={{ backgroundColor:'#FFCF66', padding:8, borderRadius:6, marginBottom:8 }}>
-        <Text>authReady: {String(authReady)} | isAdmin: {String(isAdmin)} | role: {role}</Text>
-        <Text>uid: {user?.id}</Text>
-        <Text>users.type_user (DB): {inspectedRole ?? '(sem linha)'}</Text>
-        <TouchableOpacity onPress={refreshProfile}><Text style={{ textDecorationLine:'underline' }}>Recarregar perfil</Text></TouchableOpacity>
-      </View>
-
       {/* Banner de debug com timer e botão de fechar (erros/ações) */}
       {debugMsg ? (
         <View style={styles.debugBanner}>
@@ -687,20 +767,32 @@ async function saveVol() {
       </View>
 
       {/* AÇÕES */}
-      <View style={{ flexDirection:'row', justifyContent:'flex-end', marginBottom: 12 }}>
+      <View style={{ flexDirection:'row', justifyContent:'flex-end', gap: 10, marginBottom: 12 }}>
         {tab==='jogadores' ? (
-          <TouchableOpacity style={styles.btnPrimary} onPress={()=>openEditJog()}>
-            <Feather name="user-plus" size={16} color="#fff" />
-            <Text style={styles.btnText}>  Cadastrar Jogador</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.btnNeutral} onPress={exportJogadoresCsv}>
+              <Feather name="download" size={16} color="#fff" />
+              <Text style={styles.btnText}>  Exportar CSV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnPrimary} onPress={()=>openEditJog()}>
+              <Feather name="user-plus" size={16} color="#fff" />
+              <Text style={styles.btnText}>  Cadastrar Jogador</Text>
+            </TouchableOpacity>
+          </>
         ) : (
-          <TouchableOpacity
-            style={styles.btnPrimary}
-            onPress={() => { console.log('[UI] abrir modal voluntario'); openEditVol(); }}
-          >
-            <Feather name="user-plus" size={16} color="#fff" />
-            <Text style={styles.btnText}>  Cadastrar Voluntário</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={styles.btnNeutral} onPress={exportVoluntariosCsv}>
+              <Feather name="download" size={16} color="#fff" />
+              <Text style={styles.btnText}>  Exportar CSV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.btnPrimary}
+              onPress={() => { console.log('[UI] abrir modal voluntario'); openEditVol(); }}
+            >
+              <Feather name="user-plus" size={16} color="#fff" />
+              <Text style={styles.btnText}>  Cadastrar Voluntário</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
