@@ -154,7 +154,7 @@ export default function TreinosScreen() {
       .from('jogadores')
       .select('id, nome, categoria, status')
       .eq('status', 'ativo')
-      .order('categoria', { ascending: false });
+      .order('nome', { ascending: true }); 
 
     if (error) {
       Alert.alert('Erro ao carregar jogadores', error.message);
