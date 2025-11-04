@@ -101,6 +101,8 @@ export default function TreinosScreen() {
   const [yearTo, setYearTo] = useState<string>('');
   const [searchJog, setSearchJog] = useState('');
 
+  const [buscaTreino, setBuscaTreino] = useState<string>(''); // barra de pesquisa
+
   // filtros por string (web-friendly)
   const [inicioStr, setInicioStr] = useState<string>('');   // "", "2025", "2025-11", "2025-11-03"
   const [fimStr, setFimStr] = useState<string>('');         // idem
@@ -174,6 +176,133 @@ export default function TreinosScreen() {
     });
 
     setPresCount(map);
+  }
+
+  function csvEscape(v: any) {
+    const s = v === null || v === undefined ? '' : String(v);
+    const needsQuote = /[";\n,\r]/.test(s);
+    if (!needsQuote) return s;
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+
+  function toCsv(
+    rows: any[],
+    headers: { key: string; label: string; map?: (row: any) => any }[],
+    delimiter = ';'
+  ) {
+    const head = headers.map(h => csvEscape(h.label)).join(delimiter);
+    const body = rows
+      .map(row => headers.map(h => csvEscape(h.map ? h.map(row) : row[h.key])).join(delimiter))
+      .join('\n');
+    return head + '\n' + body + '\n';
+  }
+
+  async function downloadCsv(filename: string, csv: string) {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory!;
+      const path = dir + filename;
+      await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(path, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Exportar CSV',
+        UTI: 'public.comma-separated-values-text',
+      });
+    }
+  }
+
+  function rangeLabelFromInputs(inicio: string, fim: string) {
+    const label = (s: string) => s || 'todos';
+    // se você já tem inicioStr/fimStr dos inputs de data:
+    if (typeof inicioStr === 'string' && typeof fimStr === 'string') {
+      if (inicioStr && fimStr) return `${inicioStr}_a_${fimStr}`;
+      if (inicioStr) return inicioStr;
+      if (fimStr) return fimStr;
+    }
+    return 'filtro_atual';
+  }
+
+  async function exportResumoCsv() {
+    const rows = treinosFiltrados.map(t => {
+      const r = presCount[t.id] ?? { presente: 0, faltou: 0, justificou: 0 };
+      return {
+        data: new Date(t.data_hora).toLocaleString(),
+        presentes: r.presente,
+        faltas: r.faltou,
+        justificadas: r.justificou,
+        local: t.local ?? '',
+        descricao: t.descricao ?? '',
+        id: t.id,
+      };
+    });
+
+    const headers = [
+      { key: 'data', label: 'Data/Hora' },
+      { key: 'presentes', label: 'Presentes' },
+      { key: 'faltas', label: 'Faltas' },
+      { key: 'justificadas', label: 'Justificadas' },
+      { key: 'local', label: 'Local' },
+      { key: 'descricao', label: 'Descrição' },
+      { key: 'id', label: 'Treino ID' },
+    ];
+
+    const csv = toCsv(rows, headers);
+    const label = typeof inicioStr === 'string' ? rangeLabelFromInputs(inicioStr, fimStr) : 'filtro_atual';
+    await downloadCsv(`treinos_resumo_${label}.csv`, csv);
+  }
+
+  async function exportDetalheTreinoCsv(treinoId: string) {
+    const { data: pres, error: e1 } = await supabase
+      .from('presenca')
+      .select('jogador_id, status')
+      .eq('treino_id', treinoId);
+
+    if (e1) {
+      Alert.alert('Erro', e1.message);
+      return;
+    }
+
+    const ids = Array.from(new Set((pres ?? []).map(p => p.jogador_id))).filter(Boolean);
+    let nomes: Record<string, { nome: string; categoria: number | null }> = {};
+
+    if (ids.length) {
+      const { data: jogs, error: e2 } = await supabase
+        .from('jogadores')
+        .select('id, nome, categoria')
+        .in('id', ids);
+
+      if (e2) {
+        Alert.alert('Erro', e2.message);
+        return;
+      }
+      (jogs ?? []).forEach(j => {
+        nomes[j.id] = { nome: j.nome, categoria: j.categoria ?? null };
+      });
+    }
+
+    const rows = (pres ?? [])
+      .map(p => ({
+        nome: nomes[p.jogador_id]?.nome ?? '',
+        categoria: nomes[p.jogador_id]?.categoria ?? '',
+        status: p.status ?? '',
+        jogador_id: p.jogador_id ?? '',
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+
+    const headers = [
+      { key: 'nome', label: 'Nome' },
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'status', label: 'Status' },
+      { key: 'jogador_id', label: 'Jogador ID' },
+    ];
+
+    const csv = toCsv(rows, headers);
+    await downloadCsv(`treino_${treinoId}_detalhe.csv`, csv);
   }
 
   function isValidYYYYMM(s: string) {
@@ -358,6 +487,9 @@ export default function TreinosScreen() {
     setLocal('');
     setDescricao('');
     setSel({}); // Limpa seleções antigas
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - (now.getMinutes() % 15), 0, 0);
+    setDataHora(formatLocalForInput(now.toISOString()));
     setModal(true);
     loadJogadoresAtivos();
   }
@@ -415,6 +547,20 @@ export default function TreinosScreen() {
     }
     return list;
   }, [jogadores, yearFrom, yearTo, searchJog]);
+
+  const treinosFiltrados = useMemo(() => {
+    const q = buscaTreino.trim().toLowerCase();
+    if (!q) return treinos;
+
+    return treinos.filter(t => {
+      const blob = [
+        t.local ?? '',
+        t.descricao ?? '',
+        new Date(t.data_hora).toLocaleString(), // permite buscar por data “12/11/2025”
+      ].join(' ').toLowerCase();
+      return blob.includes(q);
+    });
+  }, [treinos, buscaTreino]);
 
   function toggleSel(id: string) {
     setSel(s => ({ ...s, [id]: !s[id] }));
@@ -597,6 +743,10 @@ export default function TreinosScreen() {
             >
               <Text style={styles.btnText}>Excluir</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[styles.btnNeutral, { marginTop: 8 }]} onPress={() => exportDetalheTreinoCsv(item.id)}>
+              <Feather name="download" size={16} color="#fff" />
+              <Text style={styles.btnText}>  Exportar detalhes</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -622,13 +772,29 @@ export default function TreinosScreen() {
       <Text style={styles.h1}>Treinos</Text>
 
       {(isAdmin || isCoach) && (
-        <View style={{ marginBottom: 12, alignItems: 'flex-end' }}>
+        <View style={{ display:'flex', justifyContent: 'flex-end', marginBottom: 12, alignItems: 'center', gap: 8, flexDirection: 'row' }}>
           <TouchableOpacity style={styles.btnPrimary} onPress={openCreate}>
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Novo treino</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.btnNeutral} onPress={exportResumoCsv}>
+            <Feather name="download" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Exportar resumo (filtro atual)</Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Pesquisar treinos</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar por local, descrição ou data (ex.: 'quadra', 'físico', '12/11/2025')"
+          placeholderTextColor="#A0A0A0"
+          value={buscaTreino}
+          onChangeText={setBuscaTreino}
+        />
+      </View>
 
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
@@ -693,7 +859,7 @@ export default function TreinosScreen() {
         <ActivityIndicator color="#007BFF" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
-          data={treinos}
+          data={treinosFiltrados}
           keyExtractor={(t) => t.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: 40 }}
