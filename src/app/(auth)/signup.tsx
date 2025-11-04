@@ -1,15 +1,12 @@
-// app/(seu-caminho)/signup.tsx
 import React, { useMemo, useState } from 'react';
 import {
-  SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Image,
-  ActivityIndicator, Alert, Pressable
+  SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Alert,
+  Pressable,
+  ActivityIndicator
 } from 'react-native';
 import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { Feather } from '@expo/vector-icons';
-
-type UploadKind = 'foto' | 'doc_frente' | 'doc_verso';
 
 export default function Signup() {
   const [nome, setNome] = useState('');
@@ -18,11 +15,6 @@ export default function Signup() {
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
 
-  const [fotoUri, setFotoUri] = useState<string | null>(null);
-  const [docFrenteUri, setDocFrenteUri] = useState<string | null>(null);
-  const [docVersoUri, setDocVersoUri] = useState<string | null>(null);
-
-  const [uploading, setUploading] = useState<UploadKind | null>(null);
   const [saving, setSaving] = useState(false);
 
   const idade = useMemo(() => {
@@ -45,41 +37,6 @@ export default function Signup() {
 
   const responsavelObrigatorio = idade !== null && idade < 18;
 
-  async function pick(kind: UploadKind) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      return Alert.alert('Permissão necessária', 'Autorize acesso à galeria de imagens.');
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      if (kind === 'foto') setFotoUri(uri);
-      if (kind === 'doc_frente') setDocFrenteUri(uri);
-      if (kind === 'doc_verso') setDocVersoUri(uri);
-    }
-  }
-
-  async function uploadToStorage(localUri: string) {
-    try {
-      const res = await fetch(localUri);
-      const blob = await res.blob();
-      const ext = 'jpg';
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const path = `preinscricao/${filename}`;
-      const { error } = await supabase.storage
-        .from('jogadores')
-        .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-      if (error) throw error;
-      return path as string;
-    } finally {
-      setUploading(null);
-    }
-  }
-
   async function handleSignOut() {
     const { error } = await supabase.auth.signOut();
     if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
@@ -97,34 +54,17 @@ export default function Signup() {
 
     setSaving(true);
     try {
-      let foto_path: string | null = null;
-      let doc_id_frente_path: string | null = null;
-      let doc_id_verso_path: string | null = null;
-
-      if (fotoUri) {
-        setUploading('foto');
-        foto_path = await uploadToStorage(fotoUri);
-      }
-      if (docFrenteUri) {
-        setUploading('doc_frente');
-        doc_id_frente_path = await uploadToStorage(docFrenteUri);
-      }
-      if (docVersoUri) {
-        setUploading('doc_verso');
-        doc_id_verso_path = await uploadToStorage(docVersoUri);
-      }
-
       const { error } = await supabase.from('jogadores').insert({
         nome,
-        data_nascimento: dataNascimento,
+        data_nascimento: dataNascimento || null,
         email: email || null,
         telefone,
         responsavel_nome: responsavelObrigatorio ? responsavel : (responsavel || null),
-        foto_path,
-        doc_id_frente_path,
-        doc_id_verso_path,
         status: 'pre_inscrito',
-        termo_assinado_path: null,
+        categoria: dataNascimento ? new Date(dataNascimento).getFullYear() : null,
+        termo_entregue: false,
+        is_jogador_guarani: false,
+        observacao: null,
       });
       if (error) throw error;
 
@@ -137,7 +77,6 @@ export default function Signup() {
       Alert.alert('Erro', e.message ?? 'Falha ao enviar pré-inscrição.');
     } finally {
       setSaving(false);
-      setUploading(null);
     }
   }
 
@@ -175,31 +114,10 @@ export default function Signup() {
         <TextInput placeholder="Nome do responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
           value={responsavel} onChangeText={setResponsavel} style={styles.input} />
 
-        {/* Foto */}
-        <UploadBox
-          title="Foto do jogador"
-          uri={fotoUri}
-          onPick={() => pick('foto')}
-          uploading={uploading === 'foto'}
-        />
-
-        {/* Documento (opcional) */}
-        <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Documento de identidade (opcional)</Text>
-        <Pressable style={[styles.pickButton, { marginBottom: 8 }]} onPress={() => pick('doc_frente')}>
-          <Feather name="file-plus" size={18} color="#FFF" />
-          <Text style={styles.pickButtonText}>Frente</Text>
-        </Pressable>
-        <Pressable style={[styles.pickButton, { marginBottom: 8 }]} onPress={() => pick('doc_verso')}>
-          <Feather name="file-plus" size={18} color="#FFF" />
-          <Text style={styles.pickButtonText}>Verso</Text>
-        </Pressable>
-        <RowPreviews frente={docFrenteUri} verso={docVersoUri} />
-        {(uploading === 'doc_frente' || uploading === 'doc_verso') && <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />}
-
         <Pressable
-          style={[styles.submitButton, (saving || uploading !== null) && { opacity: 0.7 }]}
+          style={[styles.submitButton, saving && { opacity: 0.7 }]}
           onPress={enviar}
-          disabled={saving || uploading !== null}
+          disabled={saving}
         >
           {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>Enviar Pré-inscrição</Text>}
         </Pressable>
@@ -209,32 +127,6 @@ export default function Signup() {
         </Text>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function UploadBox({ title, uri, onPick, uploading }:{
-  title: string; uri: string | null; onPick: () => void; uploading: boolean;
-}) {
-  return (
-    <React.Fragment>
-      <Text style={styles.uploadTitle}>{title}</Text>
-      <Pressable style={styles.pickButton} onPress={onPick}>
-        <Feather name="image" size={18} color="#FFF" />
-        <Text style={styles.pickButtonText}>Selecionar imagem</Text>
-      </Pressable>
-      {uri ? <Image source={{ uri }} style={styles.preview} /> : null}
-      {uploading && <ActivityIndicator color="#00C2CB" />}
-    </React.Fragment>
-  );
-}
-
-function RowPreviews({ frente, verso }:{ frente: string|null; verso: string|null }) {
-  if (!frente && !verso) return null;
-  return (
-    <React.Fragment>
-      <Image source={{ uri: frente ?? undefined }} style={[styles.preview, { display: frente ? 'flex' : 'none' }]} />
-      <Image source={{ uri: verso ?? undefined }} style={[styles.preview, { display: verso ? 'flex' : 'none' }]} />
-    </React.Fragment>
   );
 }
 
