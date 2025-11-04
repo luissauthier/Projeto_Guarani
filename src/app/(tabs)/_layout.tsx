@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/contexts/AuthContext';
+import { AppHeader } from '@/components/AppHeader';
 
 export default function TabLayout() {
   const { authReady, isAdmin } = useAuth();
@@ -11,7 +12,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <AppHeader />,
         tabBarActiveTintColor: '#18641c',
         tabBarInactiveTintColor: 'gray',
         tabBarStyle: {

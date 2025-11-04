@@ -145,7 +145,7 @@ export default function Signup() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <TouchableOpacity onPress={handleSignOut} style={{ alignSelf: 'flex-end', padding: 8 }}>
-          <Feather name="log-out" size={24} color="#00C2CB" />
+          <Feather name="home" size={24} color="#00C2CB" />
         </TouchableOpacity>
 
         <Text style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 12, color: '#fff' }}>

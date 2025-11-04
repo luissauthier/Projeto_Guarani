@@ -662,12 +662,12 @@ async function saveVol() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      {/* <View style={styles.header}>
         <Text style={styles.logo}>Projeto Guarani</Text>
         <TouchableOpacity onPress={handleSignOut}>
           <Feather name="log-out" size={24} color="#00C2CB" />
         </TouchableOpacity>
-      </View>
+      </View> */}
 
       {/* Banner de debug com timer e botão de fechar (erros/ações) */}
       {debugMsg ? (
