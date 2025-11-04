@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, FlatList, ActivityIndicator,
-  TouchableOpacity, TextInput, Modal, ScrollView, Switch
+  TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform
 } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { Feather } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 
 /* ================= Helpers (fora do componente, não usam hooks) ================= */
 
@@ -97,8 +101,21 @@ export default function TreinosScreen() {
   const [yearTo, setYearTo] = useState<string>('');
   const [searchJog, setSearchJog] = useState('');
 
+  // filtros por string (web-friendly)
+  const [inicioStr, setInicioStr] = useState<string>('');   // "", "2025", "2025-11", "2025-11-03"
+  const [fimStr, setFimStr] = useState<string>('');         // idem
+
   // --- contagem de presenças por treino ---
-  const [presCount, setPresCount] = useState<Record<string, number>>({});
+  const [presCount, setPresCount] = useState<Record<string, { presente: number; faltou: number; justificou: number }>>({});
+
+  function yyyyMm(d = new Date()) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  const [dataInicio, setDataInicio] = useState<Date | null>(null);
+  const [dataFim, setDataFim] = useState<Date | null>(null);
 
   // Sanitiza input pra só dígitos (0–9) e handlers dos anos
   function onlyDigits(v: string) {
@@ -111,10 +128,36 @@ export default function TreinosScreen() {
     setYearTo(onlyDigits(v));
   }
 
-  const loadPresencasCount = useCallback(async () => {
+  // const loadPresencasCount = useCallback(async () => {
+  //   const { data, error } = await supabase
+  //     .from('presenca')
+  //     .select('treino_id, status');
+
+  //   if (error) {
+  //     console.log('[presenca][count] erro:', error);
+  //     setPresCount({});
+  //     return;
+  //   }
+
+  //   const map: Record<string, { presente: number; faltou: number; justificou: number }> = {};
+  //   (data ?? []).forEach((row: any) => {
+  //     const id = row.treino_id as string;
+  //     const st = row.status as 'presente' | 'faltou' | 'justificou';
+  //     if (!map[id]) map[id] = { presente: 0, faltou: 0, justificou: 0 };
+  //     map[id][st] = (map[id][st] ?? 0) + 1;
+  //   });
+
+  //   setPresCount(map);
+  // }, []);
+
+  // antiga loadPresencasCount → vire um helper genérico por lista de treinos
+  async function loadPresencasCountFor(treinoIds: string[]) {
+    if (!treinoIds.length) { setPresCount({}); return; }
+
     const { data, error } = await supabase
       .from('presenca')
-      .select('treino_id');
+      .select('treino_id, status')
+      .in('treino_id', treinoIds);
 
     if (error) {
       console.log('[presenca][count] erro:', error);
@@ -122,30 +165,155 @@ export default function TreinosScreen() {
       return;
     }
 
-    const map: Record<string, number> = {};
+    const map: Record<string, { presente: number; faltou: number; justificou: number }> = {};
     (data ?? []).forEach((row: any) => {
       const id = row.treino_id as string;
-      map[id] = (map[id] ?? 0) + 1;
+      const st = row.status as 'presente' | 'faltou' | 'justificou';
+      if (!map[id]) map[id] = { presente: 0, faltou: 0, justificou: 0 };
+      map[id][st] = (map[id][st] ?? 0) + 1;
     });
+
     setPresCount(map);
-  }, []);
+  }
+
+  function isValidYYYYMM(s: string) {
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+  }
+
+  function monthRangeISO(yyyyMm: string) {
+    if (!isValidYYYYMM(yyyyMm)) return null;
+    // Usa 01 do mês como início e o "add 1 mês" como fim (half-open interval)
+    const start = new Date(`${yyyyMm}-01T00:00:00`);
+    if (isNaN(start.getTime())) return null;
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    return { startISO: start.toISOString(), endISO: end.toISOString() };
+  }
+
+  function buildRange() {
+    if (dataInicio && !dataFim) {
+      // só início → aquele dia/mes/ano isolado
+      const y = dataInicio.getFullYear();
+      const m = dataInicio.getMonth();
+      const d = dataInicio.getDate();
+
+      // se o usuário só selecionar o ano (via UI)
+      if (dataInicio.getDate() === 1 && dataInicio.getMonth() === 0 && !dataFim) {
+        const start = new Date(y, 0, 1);
+        const end = new Date(y + 1, 0, 1);
+        return { startISO: start.toISOString(), endISO: end.toISOString() };
+      }
+
+      // se selecionou mês (ex: “nov 2025”)
+      if (dataInicio.getDate() === 1 && !dataFim) {
+        const start = new Date(y, m, 1);
+        const end = new Date(y, m + 1, 1);
+        return { startISO: start.toISOString(), endISO: end.toISOString() };
+      }
+
+      // se selecionou um dia completo
+      const start = new Date(y, m, d, 0, 0, 0);
+      const end = new Date(y, m, d + 1, 0, 0, 0);
+      return { startISO: start.toISOString(), endISO: end.toISOString() };
+    }
+
+    if (dataInicio && dataFim) {
+      // intervalo entre as duas datas
+      const start = new Date(dataInicio);
+      const end = new Date(dataFim);
+      end.setDate(end.getDate() + 1); // inclui o dia final
+      return { startISO: start.toISOString(), endISO: end.toISOString() };
+    }
+
+    // nenhum filtro
+    return null;
+  }
+
+  // Aceita "", "YYYY", "YYYY-MM", "YYYY-MM-DD"
+  function sanitizeYmdInput(s: string) {
+    let v = s.replace(/[^\d-]/g, '');
+    if (v.length > 10) v = v.slice(0, 10);
+    // força hífen após ano
+    if (v.length === 5 && v[4] !== '-') v = v.slice(0, 4) + '-' + v.slice(4);
+    // força segundo hífen após mês
+    if (v.length === 8 && v[7] !== '-') v = v.slice(0, 7) + '-' + v.slice(7);
+    return v;
+  }
+
+  function detectGranularity(s: string): 'year'|'month'|'day'|null {
+    if (/^\d{4}$/.test(s)) return 'year';
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return 'month';
+    if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) return 'day';
+    return null;
+  }
+
+  function rangeFromYmd(s: string) {
+    const g = detectGranularity(s);
+    if (!g) return null;
+    if (g === 'year') {
+      const y = Number(s.slice(0,4));
+      const start = new Date(y,0,1,0,0,0);
+      const end   = new Date(y+1,0,1,0,0,0);
+      return { startISO: start.toISOString(), endISO: end.toISOString() };
+    }
+    if (g === 'month') {
+      const [y,m] = s.split('-').map(Number);
+      const start = new Date(y, m-1, 1, 0,0,0);
+      const end   = new Date(y, m,   1, 0,0,0);
+      return { startISO: start.toISOString(), endISO: end.toISOString() };
+    }
+    // day
+    const [y,m,d] = s.split('-').map(Number);
+    const start = new Date(y, m-1, d, 0,0,0);
+    const end   = new Date(y, m-1, d+1, 0,0,0); // intervalo half-open => inclui o dia
+    return { startISO: start.toISOString(), endISO: end.toISOString() };
+  }
+
+  // Constrói range final a partir de início/fim (strings)
+  // Regra: se só início -> usa seu próprio range; se início + fim -> usa inicio.start .. fim.end
+  function buildRangeFromInputs(inicio: string, fim: string) {
+    const ri = inicio ? rangeFromYmd(inicio) : null;
+    const rf = fim    ? rangeFromYmd(fim)    : null;
+
+    if (ri && !rf) return ri;            // só início
+    if (!ri && !rf) return null;         // nenhum -> todos
+    if (!ri && rf)  return rf;           // só fim (tratamos como o período do fim)
+
+    // ambos válidos: start = do início, end = do fim
+    const startISO = ri!.startISO;
+    const endISO   = rf!.endISO;
+    return { startISO, endISO };
+  }
 
   const loadTreinos = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('treinos')
-      .select('*')
-      .order('data_hora', { ascending: true });
-    if (error) {
-      Alert.alert('Erro', error.message);
-      setTreinos([]);
-    } else {
-      setTreinos((data ?? []) as Treino[]);
-    }
+    try {
+      const range = buildRangeFromInputs(inicioStr, fimStr);
 
-    await loadPresencasCount(); // atualiza contagem junto
-    setLoading(false);
-  }, [loadPresencasCount]);
+      let query = supabase
+        .from('treinos')
+        .select('*')
+        .order('data_hora', { ascending: true });
+
+      if (range) {
+        query = query.gte('data_hora', range.startISO).lt('data_hora', range.endISO);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setTreinos((data ?? []) as Treino[]);
+      const ids = (data ?? []).map((t: any) => t.id);
+      await loadPresencasCountFor(ids); // você já tem essa função
+    } catch (e: any) {
+      console.log('[loadTreinos] erro:', e?.message ?? e);
+      Alert.alert('Erro', e?.message ?? 'Falha ao carregar treinos.');
+      setTreinos([]);
+      setPresCount({});
+    } finally {
+      setLoading(false);
+    }
+  }, [inicioStr, fimStr]);
 
   useEffect(() => { loadTreinos(); }, [loadTreinos]);
 
@@ -273,6 +441,7 @@ export default function TreinosScreen() {
 
   // --- CORREÇÃO: Função para salvar/atualizar presenças ---
   async function updatePresencas(treinoId: string) {
+    // 1) remove tudo do treino (mantém unicidade limpa)
     const { error: deleteError } = await supabase
       .from('presenca')
       .delete()
@@ -282,20 +451,31 @@ export default function TreinosScreen() {
       throw new Error(`Erro ao apagar presenças antigas: ${deleteError.message}`);
     }
 
+    // 2) quem está marcado => presente
     const selecionados = Object.keys(sel).filter((id) => sel[id]);
-    if (selecionados.length === 0) {
-      return;
-    }
 
-    const rows = selecionados.map((jid) => ({
-      treino_id: treinoId,
-      jogador_id: jid,
-      status: 'presente',
-    }));
+    // 3) quem é ativo mas NÃO está marcado => falta
+    const ativosTodos = jogadores.map(j => j.id);
+    const naoSelecionados = ativosTodos.filter((id) => !sel[id]);
+
+    const rows = [
+      ...selecionados.map((jid) => ({
+        treino_id: treinoId,
+        jogador_id: jid,
+        status: 'presente' as const,
+      })),
+      ...naoSelecionados.map((jid) => ({
+        treino_id: treinoId,
+        jogador_id: jid,
+        status: 'faltou' as const,
+      })),
+    ];
+
+    if (rows.length === 0) return;
 
     const { error: insertError } = await supabase.from('presenca').insert(rows);
     if (insertError) {
-      throw new Error(`Erro ao inserir novas presenças: ${insertError.message}`);
+      throw new Error(`Erro ao inserir presenças/faltas: ${insertError.message}`);
     }
   }
 
@@ -387,10 +567,13 @@ export default function TreinosScreen() {
       setDebugMsg(msg);
     }
   }
+  
+  const [showInicio, setShowInicio] = useState(false);
+  const [showFim, setShowFim] = useState(false);
 
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);
-    const presentes = presCount[item.id] ?? 0;
+    const resumo = presCount[item.id] ?? { presente: 0, faltou: 0, justificou: 0 };
 
     return (
       <View style={styles.card}>
@@ -398,8 +581,10 @@ export default function TreinosScreen() {
         {!!item.local && <Text style={styles.line}>Local: {item.local}</Text>}
         {!!item.descricao && <Text style={styles.line}>{item.descricao}</Text>}
         <Text style={[styles.line, { fontWeight: '600' }]}>
-          Presenças: {presentes}
+          Presenças: {resumo.presente}
         </Text>
+        <Text style={styles.line}>Faltas: {resumo.faltou}</Text>
+        {resumo.justificou ? <Text style={styles.line}>Justificadas: {resumo.justificou}</Text> : null}
         {(isAdmin || isCoach) && (
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
             <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
@@ -444,6 +629,65 @@ export default function TreinosScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Início: AAAA | AAAA-MM | AAAA-MM-DD"
+            placeholderTextColor="#A0A0A0"
+            value={inicioStr}
+            onChangeText={(t) => setInicioStr(sanitizeYmdInput(t))}
+            inputMode="numeric"
+          />
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Fim (opcional): AAAA | AAAA-MM | AAAA-MM-DD"
+            placeholderTextColor="#A0A0A0"
+            value={fimStr}
+            onChangeText={(t) => setFimStr(sanitizeYmdInput(t))}
+            inputMode="numeric"
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+          <TouchableOpacity
+            style={styles.btnNeutral}
+            onPress={() => {
+              const d = new Date();
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              setInicioStr(`${y}-${m}`);  // este mês
+              setFimStr('');
+            }}
+          >
+            <Text style={styles.btnText}>Este mês</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnNeutral}
+            onPress={() => {
+              const y = new Date().getFullYear();
+              setInicioStr(String(y));    // este ano
+              setFimStr('');
+            }}
+          >
+            <Text style={styles.btnText}>Este ano</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnNeutral}
+            onPress={() => { setInicioStr(''); setFimStr(''); }}
+          >
+            <Text style={styles.btnText}>Todos</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* (opcional) feedback de granularidade */}
+        <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
+          Dicas: use "2025" para o ano, "2025-11" para o mês, ou "2025-11-03" para o dia. Preencha os dois para intervalo.
+        </Text>
+      </View>
 
       {loading ? (
         <ActivityIndicator color="#007BFF" style={{ marginTop: 40 }} />

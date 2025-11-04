@@ -43,7 +43,8 @@
     "react-native-webview": "13.13.5",
     "undefined": "react-navigation/native",
     "uuid": "^11.1.0",
-    "expo-sharing": "~13.1.5"
+    "expo-sharing": "~13.1.5",
+    "@react-native-community/datetimepicker": "8.4.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
