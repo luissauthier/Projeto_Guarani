@@ -125,14 +125,15 @@ type Jogador = {
   id: string;
   nome: string;
   data_nascimento: string | null;
-  categoria: number | null; // ano
+  categoria: number | null;
   telefone: string | null;
   email: string | null;
   responsavel_nome: string | null;
-  foto_path: string | null;
-  doc_id_frente_path: string | null;
-  doc_id_verso_path: string | null;
-  termo_assinado_path: string | null;
+  // NOVOS
+  is_jogador_guarani: boolean;
+  termo_entregue: boolean;
+  observacao: string | null;
+
   status: StatusJog;
   created_at: string;
   atualizado_em?: string | null;
@@ -252,8 +253,8 @@ export default function AdminScreen() {
 
     const { data: jog, error: ej } = await supabase
       .from('jogadores')
-      .select('id,nome,data_nascimento,categoria,telefone,email,responsavel_nome,foto_path,doc_id_frente_path,doc_id_verso_path,termo_assinado_path,status,created_at,atualizado_em')
-      .order('created_at', { ascending: false });
+      .select('id,nome,data_nascimento,categoria,telefone,email,responsavel_nome,is_jogador_guarani,termo_entregue,observacao,status,created_at,atualizado_em')
+      .order('nome', { ascending: true }); // ✅ ordenar por nome
     if (ej) {
       console.log('jogadores err:', ej);
       Alert.alert('Erro', ej.message);
@@ -309,8 +310,9 @@ export default function AdminScreen() {
         v.full_name ?? '',
         v.email ?? '',
         v.telefone ?? '',
-        v.type_user ?? '',            // <- type_user
-        v.ativo ? 'ativo' : 'inativo'
+        v.type_user ?? '',
+        v.ativo ? 'ativo' : 'inativo',
+        v.observacoes ?? '',   // ✅ incluir observações no blob
       ].join(' ').toLowerCase();
       return blob.includes(q);
     });
@@ -359,51 +361,12 @@ export default function AdminScreen() {
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
 
-  // Uploads (foto/doc/termo)
-  const [fotoUri, setFotoUri] = useState<string | null>(null);
-  const [docFrenteUri, setDocFrenteUri] = useState<string | null>(null);
-  const [docVersoUri, setDocVersoUri] = useState<string | null>(null);
-  const [termoUri, setTermoUri] = useState<string | null>(null);
-
-  const [uploading, setUploading] = useState<'foto'|'doc_frente'|'doc_verso'|'termo'|null>(null);
   const [savingJog, setSavingJog] = useState(false);
 
   function openEditJog(j?: Jogador) {
     if (j) { setEditJog(j); setFormJog(j); }
     else { setEditJog(null); setFormJog({ status: 'pre_inscrito' as StatusJog }); }
-    setFotoUri(null); setDocFrenteUri(null); setDocVersoUri(null); setTermoUri(null);
     setModalJog(true);
-  }
-
-  async function pick(kind: 'foto'|'doc_frente'|'doc_verso'|'termo') {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return Alert.alert('Permissão', 'Autorize acesso à galeria.');
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8
-    });
-    if (r.canceled) return;
-    const uri = r.assets[0].uri;
-    if (kind === 'foto') setFotoUri(uri);
-    if (kind === 'doc_frente') setDocFrenteUri(uri);
-    if (kind === 'doc_verso') setDocVersoUri(uri);
-    if (kind === 'termo') setTermoUri(uri);
-  }
-
-  async function uploadIfNeeded(localUri: string | null, defaultPath: string | null, kind: 'foto'|'doc_frente'|'doc_verso'|'termo') {
-    if (!localUri) return defaultPath ?? null;
-    setUploading(kind);
-    try {
-      const res = await fetch(localUri);
-      const blob = await res.blob();
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-      const folder = kind === 'termo' ? 'termos' : 'preinscricao';
-      const path = `${folder}/${filename}`;
-      const { error } = await supabase.storage.from('jogadores').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
-      if (error) throw error;
-      return path;
-    } finally {
-      setUploading(null);
-    }
   }
 
   async function saveJogador() {
@@ -412,12 +375,7 @@ export default function AdminScreen() {
     try {
       setSavingJog(true);
 
-      const foto_path = await uploadIfNeeded(fotoUri, formJog.foto_path ?? null, 'foto');
-      const doc_id_frente_path = await uploadIfNeeded(docFrenteUri, formJog.doc_id_frente_path ?? null, 'doc_frente');
-      const doc_id_verso_path = await uploadIfNeeded(docVersoUri, formJog.doc_id_verso_path ?? null, 'doc_verso');
-      const termo_assinado_path = await uploadIfNeeded(termoUri, formJog.termo_assinado_path ?? null, 'termo');
-
-      // calcula a categoria (ano) de forma segura
+      // calcula categoria (ano)
       const categoriaAno: number | null =
         (formJog.categoria as number | null) ??
         yearFromDateOnly(formJog.data_nascimento) ??
@@ -426,14 +384,16 @@ export default function AdminScreen() {
       const payload: Partial<Jogador> = {
         nome: formJog.nome,
         data_nascimento: formJog.data_nascimento ?? null,
-        categoria: categoriaAno, 
+        categoria: categoriaAno,
         telefone: formJog.telefone ?? null,
         email: formJog.email ?? null,
         responsavel_nome: formJog.responsavel_nome ?? null,
-        foto_path,
-        doc_id_frente_path,
-        doc_id_verso_path,
-        termo_assinado_path,
+
+        // NOVOS
+        is_jogador_guarani: !!formJog.is_jogador_guarani,
+        termo_entregue: !!formJog.termo_entregue,
+        observacao: formJog.observacao ?? null,
+
         status: (formJog.status as StatusJog) ?? 'pre_inscrito',
         atualizado_em: new Date().toISOString(),
       };
@@ -451,15 +411,11 @@ export default function AdminScreen() {
       setModalJog(false);
       await load();
       Alert.alert('Sucesso', 'Dados do jogador salvos.');
-    } catch (e: any) {
-      Alert.alert('Erro', e.message ?? 'Falha ao salvar.');
+    } catch (e:any) {
       console.log('[saveJogador] erro:', e);
-      // Usando sua função helper para formatar a mensagem de erro completa
-      const errorMsg = debugSbError('salvar jogador', e);
-      Alert.alert('Erro ao Salvar Jogador', errorMsg);
+      Alert.alert('Erro ao Salvar Jogador', debugSbError('salvar jogador', e));
     } finally {
       setSavingJog(false);
-      setUploading(null);
     }
   }
 
@@ -529,108 +485,101 @@ export default function AdminScreen() {
     setModalVol(true);
   }
 
-async function saveVol() {
-  if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do voluntário.');
-  if (!formVol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
+  async function saveVol() {
+    if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do voluntário.');
+    if (!formVol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
 
-  try {
-    setSavingVol(true);
+    try {
+      setSavingVol(true);
 
-    if (editVol) {
-      // edição
-      const { error } = await supabase
-        .from('users')
-        .update({
-          full_name: formVol.full_name ?? null,
-          telefone: formVol.telefone ?? null,
-          email: formVol.email ?? null,
-          type_user: formVol.type_user ?? null,  // <- type_user
-          ativo: formVol.ativo ?? true,
-          observacoes: formVol.observacoes ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', editVol.id);
-      if (error) throw error;
+      if (editVol) {
+        // ====== E D I T A R  ======
+        const { error } = await supabase
+          .from('users')
+          .update({
+            full_name: formVol.full_name ?? null,
+            telefone: formVol.telefone ?? null,
+            email: formVol.email ?? null,
+            type_user: formVol.type_user ?? null,
+            ativo: formVol.ativo ?? true,
+            observacoes: formVol.observacoes ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editVol.id);
 
-      // FECHA PRIMEIRO, limpa estado, depois alerta
+        // 1) primeiro garante que o update deu certo
+        if (error) throw error;
+
+        // 2) só então, se tiver nova senha, chama a Edge Function
+        if (newPassword && newPassword.trim().length > 0) {
+          const { data: sess } = await supabase.auth.getSession();
+          const { error: pwErr } = await supabase.functions.invoke('admin-update-password', {
+            headers: { Authorization: `Bearer ${sess?.session?.access_token ?? ''}` },
+            body: { user_id: editVol.id, new_password: newPassword.trim() },
+          });
+          if (pwErr) throw pwErr;
+        }
+
+        // 3) fecha modal, limpa estado, recarrega e avisa
+        setModalVol(false);
+        setEditVol(null);
+        setFormVol({});
+        setNewPassword('');
+
+        await load();
+        setDebugMsg('✅ Dados do voluntário salvos.');
+        Alert.alert('Sucesso', 'Dados do voluntário salvos.');
+        return;
+      }
+
+      // ====== C R I A R  ======
+      if (!newPassword?.trim()) return Alert.alert('Atenção', 'Defina uma senha para o voluntário.');
+
+      const { data: sess } = await supabase.auth.getSession();
+      const accessToken = sess?.session?.access_token ?? '';
+
+      const payload = {
+        email: formVol.email,
+        password: newPassword,
+        full_name: formVol.full_name,
+        telefone: formVol.telefone,
+        type_user: formVol.type_user as 'viewer' | 'coach' | 'admin',
+        observacoes: formVol.observacoes ?? null,
+      };
+
+      const { data, error } = await supabase.functions.invoke('create-volunteer', {
+        body: payload,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (error) {
+        try {
+          const res = (error as any).context as Response;
+          const txt = await res.text();
+          let msg = txt;
+          try { msg = JSON.parse(txt)?.error ?? txt; } catch {}
+          Alert.alert('Erro ao criar voluntário', msg);
+        } catch {
+          Alert.alert('Erro ao criar voluntário', (error as any)?.message ?? 'Falha desconhecida');
+        }
+        return;
+      }
+
       setModalVol(false);
       setEditVol(null);
       setFormVol({});
       setNewPassword('');
-      await new Promise(r => setTimeout(r, 0));
-      await load();
-      setDebugMsg('✅ Dados do voluntário salvos.');
-
-      // dá um tick para o RN aplicar o setState antes do Alert
-      await new Promise((r) => setTimeout(r, 0));
 
       await load();
-      Alert.alert('Sucesso', 'Dados do voluntário salvos.');
-      return;
+      setDebugMsg('✅ Voluntário criado com sucesso.');
+      Alert.alert('Sucesso', 'Voluntário criado com senha.');
+    } catch (e: any) {
+      console.log('[saveVol] erro:', e);
+      Alert.alert('Erro ao Salvar Voluntário', debugSbError('salvar voluntário', e));
+    } finally {
+      setSavingVol(false);
     }
-
-    // criação com senha via edge function
-    if (!newPassword?.trim()) return Alert.alert('Atenção', 'Defina uma senha para o voluntário.');
-
-    const { data: sess } = await supabase.auth.getSession();
-    const accessToken = sess?.session?.access_token ?? '';
-
-    const payload = {
-      email: formVol.email,
-      password: newPassword,
-      full_name: formVol.full_name,
-      telefone: formVol.telefone,
-      type_user: formVol.type_user as 'viewer'|'coach'|'admin',
-      observacoes: formVol.observacoes ?? null,
-    };
-
-    console.log('[create-volunteer][front] payload', payload);
-
-    const { data, error } = await supabase.functions.invoke('create-volunteer', {
-      body: payload,
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    console.log('[create-volunteer][front] resp', { data, error });
-
-    if (error) {
-      // Mostra a mensagem vinda da Edge
-      try {
-        const res = (error as any).context as Response;
-        const txt = await res.text();
-        let msg = txt;
-        try { msg = JSON.parse(txt)?.error ?? txt; } catch {}
-        Alert.alert('Erro ao criar voluntário', msg);
-      } catch {
-        Alert.alert('Erro ao criar voluntário', (error as any)?.message ?? 'Falha desconhecida');
-      }
-      return;
-    }
-
-    // FECHA PRIMEIRO e limpa estado
-    setModalVol(false);
-    setEditVol(null);
-    setFormVol({});
-    setNewPassword('');
-
-    // dá um tick pro React aplicar o close antes de qualquer UI bloqueante
-    await new Promise(r => setTimeout(r, 0));
-
-    // recarrega lista e mostra banner de sucesso (em vez de Alert no Web)
-    await load();
-    setDebugMsg('✅ Voluntário criado com sucesso.');
-
-    await load();
-    Alert.alert('Sucesso', 'Voluntário criado com senha.');
-  } catch (e: any) {
-    console.log('[saveVol] erro:', e);
-      // Usando sua função helper para formatar a mensagem de erro completa
-      const errorMsg = debugSbError('salvar voluntário', e);
-      Alert.alert('Erro ao Salvar Voluntário', errorMsg);
-  } finally {
-    setSavingVol(false);
   }
-}
 
   /* ================= "Excluir" VOLUNTÁRIO ================= */
   async function deletarVol(id: string) {
@@ -941,77 +890,36 @@ async function saveVol() {
           onChangeText={(t) => setFormJog((s) => ({ ...s, responsavel_nome: t }))}
         />
 
-        <View style={styles.box}>
-          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Foto do jogador</Text>
-          <TouchableOpacity style={styles.btnNeutral} onPress={() => pick('foto')}>
-            <Feather name="image" size={18} color="#fff" />
-            <Text style={styles.btnText}>  Selecionar imagem</Text>
+        {/* === NOVOS CAMPOS === */}
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+          <Text style={{ color:'#E0E0E0' }}>Jogador Guarani</Text>
+          <TouchableOpacity
+            onPress={() => setFormJog(s => ({ ...s, is_jogador_guarani: !(s.is_jogador_guarani ?? false) }))}
+            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
+          >
+            <Text style={styles.btnText}>{formJog.is_jogador_guarani ? 'Sim' : 'Não'}</Text>
           </TouchableOpacity>
-          {fotoUri ? (
-            <Image source={{ uri: fotoUri }} style={styles.preview} />
-          ) : formJog.foto_path ? (
-            <Image
-              source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.foto_path).data.publicUrl }}
-              style={styles.preview}
-            />
-          ) : null}
-          {uploading === 'foto' && <ActivityIndicator color="#00C2CB" />}
         </View>
 
-        <View style={styles.box}>
-          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Documento de identidade</Text>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => pick('doc_frente')}>
-              <Feather name="file-plus" size={18} color="#fff" />
-              <Text style={styles.btnText}>  Frente</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => pick('doc_verso')}>
-              <Feather name="file-plus" size={18} color="#fff" />
-              <Text style={styles.btnText}>  Verso</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            {docFrenteUri ? (
-              <Image source={{ uri: docFrenteUri }} style={[styles.preview, { flex: 1 }]} />
-            ) : formJog.doc_id_frente_path ? (
-              <Image
-                source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_frente_path).data.publicUrl }}
-                style={[styles.preview, { flex: 1 }]}
-              />
-            ) : null}
-
-            {docVersoUri ? (
-              <Image source={{ uri: docVersoUri }} style={[styles.preview, { flex: 1 }]} />
-            ) : formJog.doc_id_verso_path ? (
-              <Image
-                source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.doc_id_verso_path).data.publicUrl }}
-                style={[styles.preview, { flex: 1 }]}
-              />
-            ) : null}
-          </View>
-
-          {(uploading === 'doc_frente' || uploading === 'doc_verso') && (
-            <ActivityIndicator color="#00C2CB" style={{ marginTop: 8 }} />
-          )}
-        </View>
-
-        <View style={styles.box}>
-          <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Termo assinado</Text>
-          <TouchableOpacity style={styles.btnNeutral} onPress={() => pick('termo')}>
-            <Feather name="file-plus" size={18} color="#fff" />
-            <Text style={styles.btnText}>  Selecionar imagem</Text>
+        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+          <Text style={{ color:'#E0E0E0' }}>Termo entregue</Text>
+          <TouchableOpacity
+            onPress={() => setFormJog(s => ({ ...s, termo_entregue: !(s.termo_entregue ?? false) }))}
+            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
+          >
+            <Text style={styles.btnText}>{formJog.termo_entregue ? 'Sim' : 'Não'}</Text>
           </TouchableOpacity>
-          {termoUri ? (
-            <Image source={{ uri: termoUri }} style={styles.preview} />
-          ) : formJog.termo_assinado_path ? (
-            <Image
-              source={{ uri: supabase.storage.from('jogadores').getPublicUrl(formJog.termo_assinado_path).data.publicUrl }}
-              style={styles.preview}
-            />
-          ) : null}
-          {uploading === 'termo' && <ActivityIndicator color="#00C2CB" />}
         </View>
+
+        <TextInput
+          style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+          multiline
+          numberOfLines={4}
+          placeholder="Observação do jogador"
+          placeholderTextColor="#A0A0A0"
+          value={formJog.observacao ?? ''}
+          onChangeText={(t) => setFormJog((s) => ({ ...s, observacao: t }))}
+        />
 
         <Text style={styles.label}>Status</Text>
         <Picker
@@ -1028,7 +936,7 @@ async function saveVol() {
           <TouchableOpacity
             style={[styles.btnPrimary, { flex: 1 }]}
             onPress={saveJogador}
-            disabled={savingJog || uploading !== null}
+            disabled={savingJog}
           >
             {savingJog ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
           </TouchableOpacity>
@@ -1071,16 +979,14 @@ async function saveVol() {
           onChangeText={(t) => setFormVol((s) => ({ ...s, email: t }))}
         />
 
-        {!editVol && (
-          <TextInput
-            style={styles.input}
-            placeholder="Senha do voluntário"
-            placeholderTextColor="#A0A0A0"
-            secureTextEntry
-            value={newPassword}
-            onChangeText={setNewPassword}
-          />
-        )}
+        <TextInput
+          style={styles.input}
+          placeholder={editVol ? "Nova senha (opcional)" : "Senha do voluntário"}
+          placeholderTextColor="#A0A0A0"
+          secureTextEntry
+          value={newPassword}
+          onChangeText={setNewPassword}
+        />
 
         <Text style={styles.label}>Tipo</Text>
         <Picker
