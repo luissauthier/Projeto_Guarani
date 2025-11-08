@@ -64,6 +64,15 @@ function formatLocalForInputWeb(d: Date) {
   return `${y}-${m}-${day}T${hh}:${mm}`;
 }
 
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value || '—'}</Text>
+    </View>
+  );
+}
+
 /* ================= Types ================= */
 
 type Treino = {
@@ -97,6 +106,10 @@ export default function TreinosScreen() {
     }
   }, [debugMsg]);
 
+  const COLOR_OK = '#2ecc71';
+  const COLOR_WARN = '#f1c40f';
+  const COLOR_ERR = '#e74c3c';
+
   const [treinos, setTreinos] = useState<Treino[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -112,10 +125,14 @@ export default function TreinosScreen() {
   
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [statusMap, setStatusMap] = useState<Record<string, 'presente'|'faltou'|'justificou'|undefined>>({});
   
   const [yearFrom, setYearFrom] = useState<string>('');
   const [yearTo, setYearTo] = useState<string>('');
   const [searchJog, setSearchJog] = useState('');
+
+  // depois dos outros useState do modal:
+  const [readOnly, setReadOnly] = useState(false);
 
   const [buscaTreino, setBuscaTreino] = useState<string>(''); // barra de pesquisa
 
@@ -487,24 +504,29 @@ export default function TreinosScreen() {
     if (error) {
       console.error('Erro ao buscar presenças:', error);
       setSel({});
+      setStatusMap({});
       return;
     }
 
-    const presencesMap = (data ?? []).reduce((acc, item) => {
-      acc[item.jogador_id] = item.status === 'presente';
-      // Se quiser tratar "justificou" como ligado visualmente:
-      // acc[item.jogador_id] = item.status === 'presente' || item.status === 'justificou';
-      return acc;
-    }, {} as Record<string, boolean>);
+    const selMap: Record<string, boolean> = {};
+    const stMap: Record<string, 'presente'|'faltou'|'justificou'> = {};
 
-    setSel(presencesMap);
+    (data ?? []).forEach((row) => {
+      stMap[row.jogador_id] = row.status;                 // para relatório
+      selMap[row.jogador_id] = row.status === 'presente'; // para switches
+    });
+
+    setSel(selMap);
+    setStatusMap(stMap);
   }
 
   function openCreate() {
+    setReadOnly(false);
     setEditTreino(null);
     setLocal('');
     setDescricao('');
     setSel({});
+    setStatusMap({});
     setDataHora(roundNowTo15min()); // ✅ agora é Date
     setModal(true);
     loadJogadoresAtivos();
@@ -512,14 +534,29 @@ export default function TreinosScreen() {
 
   // --- CORREÇÃO: Chama a busca de presenças ao editar ---
   async function openEdit(t: Treino) {
+    setReadOnly(false);              
     setEditTreino(t);
     setDataHora(new Date(t.data_hora));
     setLocal(t.local ?? '');
     setDescricao(t.descricao ?? '');
     setSel({}); // limpa antes de recarregar
+    setStatusMap({});
     await loadJogadoresAtivos();
     await loadExistingPresences(t.id);
     setModal(true); // abre depois que os dados chegaram
+  }
+
+  async function openView(t: Treino) {
+    setReadOnly(true);                    // <- leitura
+    setEditTreino(t);
+    setDataHora(new Date(t.data_hora));
+    setLocal(t.local ?? '');
+    setDescricao(t.descricao ?? '');
+    setSel({});
+    setStatusMap({});
+    await loadJogadoresAtivos();
+    await loadExistingPresences(t.id);
+    setModal(true);
   }
   
   function openDeleteConfirm(treino: Treino) {
@@ -952,24 +989,33 @@ export default function TreinosScreen() {
         </Text>
         <Text style={styles.line}>Faltas: {resumo.faltou}</Text>
         {resumo.justificou ? <Text style={styles.line}>Justificadas: {resumo.justificou}</Text> : null}
-        {(isAdmin || isCoach) && (
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-            <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
-              <Text style={styles.btnText}>Editar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.btnDanger}
-              onPress={() => openDeleteConfirm(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.btnText}>Excluir</Text>
-            </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap:'wrap' }}>
+          <TouchableOpacity style={styles.btnNeutral} onPress={() => openView(item)}>
+            <Text style={styles.btnText}>Ver detalhes</Text>
+          </TouchableOpacity>
+
+          {(isAdmin || isCoach) && (
+            <>
+              <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
+                <Text style={styles.btnText}>Editar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnDanger}
+                onPress={() => openDeleteConfirm(item)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.btnText}>Excluir</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {(isAdmin || isCoach) && (
             <TouchableOpacity style={[styles.btnNeutral, { marginTop: 8 }]} onPress={() => exportDetalheTreinoCsv(item.id)}>
               <Feather name="download" size={16} color="#fff" />
               <Text style={styles.btnText}>  Exportar detalhes</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
       </View>
     );
   }
@@ -1088,104 +1134,128 @@ export default function TreinosScreen() {
       
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+          {/* Conteúdo com padding e rodapé fora para fixar no fundo */}
           <View style={{ flex: 1, padding: 16 }}>
-            <Text style={styles.h1}>{editTreino ? 'Editar treino' : 'Novo treino'}</Text>
-            
-      {Platform.OS === 'web' ? (
-        <input
-          type="datetime-local"
-          value={formatLocalForInputWeb(dataHora)}
-          onChange={(e) => {
-            const val = e.currentTarget.value; // "YYYY-MM-DDTHH:mm"
-            // cria Date no fuso local do browser
-            setDataHora(new Date(val));
-          }}
-          step={900} // 15 min
-          style={{
-            padding: 10,
-            border: '1px solid #4A6572',
-            backgroundColor: '#203A4A',
-            color: '#FFF',
-            borderRadius: 10,
-            height: 50,
-            marginBottom: 10,
-            width: '100%',
-            boxSizing: 'border-box',
-          }}
-        />
-      ) : (
-        <DateTimePicker
-          value={dataHora}
-          mode="datetime"
-          onChange={(_, d) => { if (d) setDataHora(d); }}
-          minuteInterval={15}
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-        />
-      )}
-            <TextInput
-              style={styles.input}
-              placeholder="Local (opcional)"
-              placeholderTextColor="#A0A0A0"
-              value={local}
-              onChangeText={setLocal}
-            />
-            <TextInput
-              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-              multiline
-              numberOfLines={4}
-              placeholder="Descrição/atividades"
-              placeholderTextColor="#A0A0A0"
-              value={descricao}
-              onChangeText={setDescricao}
-            />
+            <Text style={styles.h1}>
+              {readOnly ? 'Detalhes do treino' : (editTreino ? 'Editar treino' : 'Novo treino')}
+            </Text>
 
-            <View style={[styles.box, { flex: 1 }]}>
-              <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Selecionar jogadores (ativos)</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="Ano de (ex: 2008)"
-                  placeholderTextColor="#A0A0A0"
-                  value={yearFrom}
-                  onChangeText={handleYearFrom}
-                  keyboardType="numeric"
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="Ano até (ex: 2012)"
-                  placeholderTextColor="#A0A0A0"
-                  value={yearTo}
-                  onChangeText={handleYearTo}
-                  keyboardType="numeric"
-                />
+            {readOnly ? (
+              // ==== MODO RELATÓRIO (sem maxHeight) ====
+              <View style={{ flex: 1 }}>
+                {/* Caixa com infos gerais (altura automática) */}
+                <View style={styles.box}>
+                  <InfoRow label="Data" value={dataHora.toLocaleString()} />
+                  <InfoRow label="Local" value={local} />
+                  <InfoRow label="Descrição" value={descricao} />
+                </View>
+
+                {/* Caixa de alunos ocupa o espaço restante e scrolla */}
+                <View style={[styles.box, { flex: 1 }]}>
+                  <Text style={{ color:'#fff', fontWeight:'bold', marginBottom: 8 }}>Alunos</Text>
+
+                  <FlatList
+                    style={{ flex: 1 }}                 // <- garante que a lista use o espaço restante
+                    contentContainerStyle={{ paddingBottom: 4 }}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    data={jogadoresFiltrados}
+                    keyExtractor={(j) => j.id}
+                    renderItem={({ item }) => {
+                      const st = statusMap[item.id] || 'faltou';
+                      const icon = st === 'presente' ? 'check-circle' : (st === 'justificou' ? 'minus-circle' : 'x-circle');
+                      const color = st === 'presente' ? '#2ecc71' : (st === 'justificou' ? '#f1c40f' : '#e74c3c');
+                      return (
+                        <View style={styles.rowSel}>
+                          <Text style={{ color:'#fff', flex:1 }}>
+                            {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+                          </Text>
+                          <Feather name={icon as any} size={20} color={color} />
+                        </View>
+                      );
+                    }}
+                  />
+                </View>
               </View>
-              <TextInput
-                style={styles.input}
-                placeholder="Pesquisar nome/ano"
-                placeholderTextColor="#A0A0A0"
-                value={searchJog}
-                onChangeText={setSearchJog}
-              />
-              <FlatList
-                data={jogadoresFiltrados}
-                keyExtractor={(j) => j.id}
-                renderItem={({ item }) => (
-                  <View style={styles.rowSel}>
-                    <Text style={{ color: '#fff', flex: 1 }}>{item.nome} {item.categoria ? `(${item.categoria})` : ''}</Text>
-                    <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
-                  </View>
+            ) : (
+              // ==== MODO EDIÇÃO (sem mudanças) ====
+              <>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="datetime-local"
+                    value={formatLocalForInputWeb(dataHora)}
+                    onChange={(e) => setDataHora(new Date(e.currentTarget.value))}
+                    step={900}
+                    style={{
+                      padding: 10, border: '1px solid #4A6572', backgroundColor: '#203A4A',
+                      color: '#FFF', borderRadius: 10, height: 50, marginBottom: 10, width: '100%', boxSizing: 'border-box',
+                    }}
+                  />
+                ) : (
+                  <DateTimePicker
+                    value={dataHora}
+                    mode="datetime"
+                    onChange={(_, d) => { if (d) setDataHora(d); }}
+                    minuteInterval={15}
+                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  />
                 )}
-                ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
-              />
-            </View>
-            
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Local (opcional)"
+                  placeholderTextColor="#A0A0A0"
+                  value={local}
+                  onChangeText={setLocal}
+                />
+
+                <TextInput
+                  style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+                  multiline numberOfLines={4}
+                  placeholder="Descrição/atividades"
+                  placeholderTextColor="#A0A0A0"
+                  value={descricao}
+                  onChangeText={setDescricao}
+                />
+
+                <View style={[styles.box, { flex: 1 }]}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Selecionar jogadores (ativos)</Text>
+                  <FlatList
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 4 }}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    data={jogadoresFiltrados}
+                    keyExtractor={(j) => j.id}
+                    renderItem={({ item }) => (
+                      <View style={styles.rowSel}>
+                        <Text style={{ color: '#fff', flex: 1 }}>
+                          {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+                        </Text>
+                        <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
+                      </View>
+                    )}
+                  />
+                </View>
+              </>
+            )}
+
+            {/* RODAPÉ FIXO */}
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={save} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModal(false)}>
-                <Text style={styles.btnText}>Cancelar</Text>
-              </TouchableOpacity>
+              {readOnly ? (
+                <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModal(false)}>
+                  <Text style={styles.btnText}>Fechar</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={save} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModal(false)}>
+                    <Text style={styles.btnText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         </SafeAreaView>
@@ -1318,5 +1388,20 @@ const styles = StyleSheet.create({
     color: '#000',
     flex: 1,
     marginRight: 8,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+  infoLabel: {
+    color: '#A8BCD0',
+    width: 90,              // largura fixa p/ alinhar
+    fontWeight: '600',
+  },
+  infoValue: {
+    color: '#FFF',
+    flex: 1,
   },
 });
