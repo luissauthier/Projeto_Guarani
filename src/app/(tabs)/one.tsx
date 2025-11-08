@@ -48,6 +48,22 @@ function formatLocalForInput(iso: string) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
+function roundNowTo15min(): Date {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - (d.getMinutes() % 15), 0, 0);
+  return d;
+}
+
+function formatLocalForInputWeb(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  return `${y}-${m}-${day}T${hh}:${mm}`;
+}
+
 /* ================= Types ================= */
 
 type Treino = {
@@ -89,7 +105,7 @@ export default function TreinosScreen() {
   const [modal, setModal] = useState(false);
   const [editTreino, setEditTreino] = useState<Treino | null>(null);
   
-  const [dataHora, setDataHora] = useState('');
+  const [dataHora, setDataHora] = useState<Date>(roundNowTo15min());
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
   const [saving, setSaving] = useState(false);
@@ -461,20 +477,23 @@ export default function TreinosScreen() {
     }
   }
 
-  // --- CORREÇÃO: Função para buscar presenças existentes ---
+  // Carrega do banco e liga o switch APENAS para quem está "presente"
   async function loadExistingPresences(treinoId: string) {
     const { data, error } = await supabase
       .from('presenca')
-      .select('jogador_id')
+      .select('jogador_id, status')
       .eq('treino_id', treinoId);
 
     if (error) {
-      console.error("Erro ao buscar presenças:", error);
-      return {};
+      console.error('Erro ao buscar presenças:', error);
+      setSel({});
+      return;
     }
 
     const presencesMap = (data ?? []).reduce((acc, item) => {
-      acc[item.jogador_id] = true;
+      acc[item.jogador_id] = item.status === 'presente';
+      // Se quiser tratar "justificou" como ligado visualmente:
+      // acc[item.jogador_id] = item.status === 'presente' || item.status === 'justificou';
       return acc;
     }, {} as Record<string, boolean>);
 
@@ -483,13 +502,10 @@ export default function TreinosScreen() {
 
   function openCreate() {
     setEditTreino(null);
-    setDataHora('');
     setLocal('');
     setDescricao('');
-    setSel({}); // Limpa seleções antigas
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - (now.getMinutes() % 15), 0, 0);
-    setDataHora(formatLocalForInput(now.toISOString()));
+    setSel({});
+    setDataHora(roundNowTo15min()); // ✅ agora é Date
     setModal(true);
     loadJogadoresAtivos();
   }
@@ -497,12 +513,13 @@ export default function TreinosScreen() {
   // --- CORREÇÃO: Chama a busca de presenças ao editar ---
   async function openEdit(t: Treino) {
     setEditTreino(t);
-    setDataHora(formatLocalForInput(t.data_hora));
+    setDataHora(new Date(t.data_hora));
     setLocal(t.local ?? '');
     setDescricao(t.descricao ?? '');
-    setModal(true);
+    setSel({}); // limpa antes de recarregar
     await loadJogadoresAtivos();
-    await loadExistingPresences(t.id); // Busca presenças existentes
+    await loadExistingPresences(t.id);
+    setModal(true); // abre depois que os dados chegaram
   }
   
   function openDeleteConfirm(treino: Treino) {
@@ -632,16 +649,16 @@ export default function TreinosScreen() {
       Alert.alert('Erro', 'Usuário não identificado.');
       return;
     }
-    const ts = toPgTimestamptzWithOffset(dataHora);
-    if (!ts) {
-      Alert.alert('Atenção', 'Formato de data inválido. Use AAAA-MM-DD ou AAAA-MM-DD HH:MM.');
+    if (!(dataHora instanceof Date) || isNaN(dataHora.getTime())) {
+      Alert.alert('Atenção', 'Escolha uma data e hora válidas.');
       return;
     }
+
+    const ts = dataHora.toISOString(); // ✅ use timestamptz no Postgres
 
     setSaving(true);
     try {
       if (editTreino) {
-        // ===== UPDATE =====
         const { data: updatedTreino, error: updateError } = await supabase
           .from('treinos')
           .update({
@@ -655,18 +672,14 @@ export default function TreinosScreen() {
           .single();
 
         if (updateError) throw updateError;
-        if (!updatedTreino) {
-            throw new Error("Não foi possível encontrar o treino para atualizar.");
-        }
+        if (!updatedTreino) throw new Error("Não foi possível encontrar o treino para atualizar.");
 
         await updatePresencas(updatedTreino.id);
-        
+
         setModal(false);
         await loadTreinos();
         Alert.alert('Sucesso', 'Treino atualizado.');
-
       } else {
-        // ===== INSERT =====
         const { data: novo, error } = await supabase
           .from('treinos')
           .insert({
@@ -682,7 +695,7 @@ export default function TreinosScreen() {
         if (!novo) throw new Error("Falha ao criar o treino.");
 
         await updatePresencas(novo.id);
-        
+
         setModal(false);
         await loadTreinos();
         Alert.alert('Sucesso', 'Treino criado.');
@@ -872,13 +885,37 @@ export default function TreinosScreen() {
           <View style={{ flex: 1, padding: 16 }}>
             <Text style={styles.h1}>{editTreino ? 'Editar treino' : 'Novo treino'}</Text>
             
-            <TextInput
-              style={styles.input}
-              placeholder="Data e hora (AAAA-MM-DD HH:MM)"
-              placeholderTextColor="#A0A0A0"
-              value={dataHora}
-              onChangeText={setDataHora}
-            />
+      {Platform.OS === 'web' ? (
+        <input
+          type="datetime-local"
+          value={formatLocalForInputWeb(dataHora)}
+          onChange={(e) => {
+            const val = e.currentTarget.value; // "YYYY-MM-DDTHH:mm"
+            // cria Date no fuso local do browser
+            setDataHora(new Date(val));
+          }}
+          step={900} // 15 min
+          style={{
+            padding: 10,
+            border: '1px solid #4A6572',
+            backgroundColor: '#203A4A',
+            color: '#FFF',
+            borderRadius: 10,
+            height: 50,
+            marginBottom: 10,
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
+        />
+      ) : (
+        <DateTimePicker
+          value={dataHora}
+          mode="datetime"
+          onChange={(_, d) => { if (d) setDataHora(d); }}
+          minuteInterval={15}
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+        />
+      )}
             <TextInput
               style={styles.input}
               placeholder="Local (opcional)"
