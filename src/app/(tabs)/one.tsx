@@ -385,12 +385,12 @@ export default function TreinosScreen() {
     return v;
   }
 
-  function detectGranularity(s: string): 'year'|'month'|'day'|null {
-    if (/^\d{4}$/.test(s)) return 'year';
-    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return 'month';
-    if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) return 'day';
-    return null;
-  }
+  // function detectGranularity(s: string): 'year'|'month'|'day'|null {
+  //   if (/^\d{4}$/.test(s)) return 'year';
+  //   if (/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return 'month';
+  //   if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) return 'day';
+  //   return null;
+  // }
 
   function rangeFromYmd(s: string) {
     const g = detectGranularity(s);
@@ -542,6 +542,214 @@ export default function TreinosScreen() {
     const { error } = await supabase.auth.signOut();
     setAuth(null);
     if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
+  }
+
+  function pad2(n: number | string) {
+    return String(n).padStart(2, '0');
+  }
+
+  // Decide o modo inicial a partir do valor atual
+  function detectGranularity(s: string): 'year'|'month'|'day' {
+    if (/^\d{4}$/.test(s)) return 'year';
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(s)) return 'month';
+    if (/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) return 'day';
+    return 'year';
+  }
+
+  type GranularDateInputProps = {
+    label: string;
+    value: string;                      // "", "YYYY", "YYYY-MM" ou "YYYY-MM-DD"
+    onChange: (v: string) => void;      // devolve no mesmo formato acima
+  };
+
+  function GranularDateInput({ label, value, onChange }: GranularDateInputProps) {
+    const [mode, setMode] = React.useState<'year'|'month'|'day'>(detectGranularity(value));
+    const [showPicker, setShowPicker] = React.useState(false);
+
+    // fatia valor atual em partes
+    const y = value.slice(0, 4);
+    const m = value.length >= 7 ? value.slice(5, 7) : '';
+    const d = value.length === 10 ? value.slice(8, 10) : '';
+
+    function setYear(v: string) {
+      const only = v.replace(/\D/g, '').slice(0, 4);
+      if (mode === 'year') onChange(only);
+      else if (mode === 'month') onChange(only.length === 4 && m ? `${only}-${m}` : only);
+      else if (mode === 'day')  onChange(only.length === 4 && m && d ? `${only}-${m}-${d}` : only);
+    }
+    function setMonth(v: string) {
+      const only = v.replace(/\D/g, '').slice(0, 2);
+      const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
+      if (mode === 'month') onChange(y && mm ? `${y}-${mm}` : y);
+      else if (mode === 'day') onChange(y && mm && d ? `${y}-${mm}-${d}` : (y && mm ? `${y}-${mm}` : y));
+    }
+    function setDay(v: string) {
+      const only = v.replace(/\D/g, '').slice(0, 2);
+      const dd = only ? pad2(Math.min(31, Math.max(1, Number(only)))) : '';
+      onChange(y && m && dd ? `${y}-${m}-${dd}` : (y && m ? `${y}-${m}` : y));
+    }
+
+    function switchMode(next: 'year'|'month'|'day') {
+      setMode(next);
+      // ao trocar o modo, mantenha o que já existir
+      if (next === 'year') onChange(y);
+      if (next === 'month') onChange(y && m ? `${y}-${m}` : y);
+      if (next === 'day') {
+        if (y && m && d) onChange(`${y}-${m}-${d}`);
+        else if (y && m) onChange(`${y}-${m}`);
+        else onChange(y);
+      }
+    }
+
+    return (
+      <View style={{ marginBottom: 10 }}>
+        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>{label}</Text>
+
+        {/* “segmented” simples */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+          {(['year','month','day'] as const).map(t => (
+            <TouchableOpacity
+              key={t}
+              onPress={() => switchMode(t)}
+              style={{
+                paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8,
+                backgroundColor: mode === t ? '#18641c' : '#4A6572'
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>
+                {t === 'year' ? 'Ano' : t === 'month' ? 'Mês/Ano' : 'Dia'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Campos conforme o modo */}
+        {mode === 'year' && (
+          <TextInput
+            style={styles.input}
+            placeholder="AAAA"
+            placeholderTextColor="#A0A0A0"
+            value={y}
+            onChangeText={setYear}
+            keyboardType="numeric"
+            maxLength={4}
+          />
+        )}
+
+        {mode === 'month' && (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="MM"
+              placeholderTextColor="#A0A0A0"
+              value={m}
+              onChangeText={setMonth}
+              keyboardType="numeric"
+              maxLength={2}
+            />
+            <TextInput
+              style={[styles.input, { flex: 2 }]}
+              placeholder="AAAA"
+              placeholderTextColor="#A0A0A0"
+              value={y}
+              onChangeText={setYear}
+              keyboardType="numeric"
+              maxLength={4}
+            />
+          </View>
+        )}
+
+        {mode === 'day' && (
+          <>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={value.length === 10 ? value : (y && m ? `${y}-${m}-${pad2(d || '01')}` : '')}
+                onChange={(e) => {
+                  const v = e.currentTarget.value; // YYYY-MM-DD
+                  onChange(v);
+                }}
+                style={{
+                  padding: 10,
+                  border: '1px solid #4A6572',
+                  backgroundColor: '#203A4A',
+                  color: '#FFF',
+                  borderRadius: 10,
+                  height: 50,
+                  marginBottom: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => setShowPicker(true)}
+                  style={[styles.input, { justifyContent: 'center' }]}
+                >
+                  <Text style={{ color: value ? '#fff' : '#A0A0A0' }}>
+                    {value ? value.split('-').reverse().join('/') : 'Selecionar data'}
+                  </Text>
+                </TouchableOpacity>
+                {showPicker && (
+                  <DateTimePicker
+                    mode="date"
+                    value={
+                      value && value.length === 10
+                        ? new Date(value + 'T00:00:00')
+                        : new Date()
+                    }
+                    onChange={(_, d) => {
+                      setShowPicker(false);
+                      if (d) {
+                        const yy = d.getFullYear();
+                        const mm = pad2(d.getMonth() + 1);
+                        const dd = pad2(d.getDate());
+                        onChange(`${yy}-${mm}-${dd}`);
+                      }
+                    }}
+                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Caso queira editar manualmente MM/AAAA/DIA também: */}
+            {Platform.OS !== 'web' && (
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="DD"
+                  placeholderTextColor="#A0A0A0"
+                  value={d}
+                  onChangeText={setDay}
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="MM"
+                  placeholderTextColor="#A0A0A0"
+                  value={m}
+                  onChangeText={setMonth}
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="AAAA"
+                  placeholderTextColor="#A0A0A0"
+                  value={y}
+                  onChangeText={setYear}
+                  keyboardType="numeric"
+                  maxLength={4}
+                />
+              </View>
+            )}
+          </>
+        )}
+      </View>
+    );
   }
 
   const jogadoresFiltrados = useMemo(() => {
@@ -813,22 +1021,20 @@ export default function TreinosScreen() {
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TextInput
-            style={[styles.input, { flex: 1 }]}
-            placeholder="Início: AAAA | AAAA-MM | AAAA-MM-DD"
-            placeholderTextColor="#A0A0A0"
-            value={inicioStr}
-            onChangeText={(t) => setInicioStr(sanitizeYmdInput(t))}
-            inputMode="numeric"
-          />
-          <TextInput
-            style={[styles.input, { flex: 1 }]}
-            placeholder="Fim (opcional): AAAA | AAAA-MM | AAAA-MM-DD"
-            placeholderTextColor="#A0A0A0"
-            value={fimStr}
-            onChangeText={(t) => setFimStr(sanitizeYmdInput(t))}
-            inputMode="numeric"
-          />
+          <View style={{ flex: 1 }}>
+            <GranularDateInput
+              label="Início"
+              value={inicioStr}
+              onChange={setInicioStr}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <GranularDateInput
+              label="Fim (opcional)"
+              value={fimStr}
+              onChange={setFimStr}
+            />
+          </View>
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
