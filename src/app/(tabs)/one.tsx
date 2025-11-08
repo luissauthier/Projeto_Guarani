@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, FlatList, ActivityIndicator,
-  TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform
+  TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform,
+  Dimensions, TouchableWithoutFeedback
 } from 'react-native';
+import { Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from 'docx'
 import { supabase } from '@/src/lib/supabase';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { Feather } from '@expo/vector-icons';
@@ -71,6 +73,107 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
       <Text style={styles.infoValue}>{value || '—'}</Text>
     </View>
   );
+}
+
+// --- helper: busca linhas do detalhe (nome, categoria, status) ---
+async function getDetalheTreinoRows(treinoId: string) {
+  const { data: pres, error: e1 } = await supabase
+    .from('presenca')
+    .select('jogador_id, status')
+    .eq('treino_id', treinoId);
+
+  if (e1) throw e1;
+
+  const ids = Array.from(new Set((pres ?? []).map(p => p.jogador_id))).filter(Boolean);
+  let nomes: Record<string, { nome: string; categoria: number | null }> = {};
+  if (ids.length) {
+    const { data: jogs, error: e2 } = await supabase
+      .from('jogadores')
+      .select('id, nome, categoria')
+      .in('id', ids);
+    if (e2) throw e2;
+    (jogs ?? []).forEach(j => {
+      nomes[j.id] = { nome: j.nome, categoria: j.categoria ?? null };
+    });
+  }
+
+  const rows = (pres ?? [])
+    .map(p => ({
+      nome: nomes[p.jogador_id]?.nome ?? '',
+      categoria: nomes[p.jogador_id]?.categoria ?? '',
+      status: p.status ?? '',
+      jogador_id: p.jogador_id ?? '',
+    }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  return rows;
+}
+
+// --- DOCX do detalhe ---
+async function exportDetalheTreinoDocx(treino: Treino) {
+  const rows = await getDetalheTreinoRows(treino.id);
+  const presentes = rows.filter(r => r.status === 'presente');
+  const faltas    = rows.filter(r => r.status === 'faltou');
+  const justific  = rows.filter(r => r.status === 'justificou');
+
+  const children: any[] = [
+    new Paragraph({ text: 'Detalhe do treino', heading: HeadingLevel.HEADING_1 }),
+    kv('Data', new Date(treino.data_hora).toLocaleString()),
+    kv('Local', treino.local ?? ''),
+    kv('Descrição', treino.descricao ?? ''),
+    kv('Presenças', String(presentes.length)),
+    kv('Faltas', String(faltas.length)),
+    ...(justific.length ? [kv('Justificadas', String(justific.length))] : []),
+    hr(),
+    new Paragraph({ text: 'Presentes', heading: HeadingLevel.HEADING_2 }),
+    ...(presentes.length ? presentes.map(p =>
+      new Paragraph(`• ${p.nome}${p.categoria ? ` (${p.categoria})` : ''}`)
+    ) : [new Paragraph('—')]),
+    hr(),
+    new Paragraph({ text: 'Faltas', heading: HeadingLevel.HEADING_2 }),
+    ...(faltas.length ? faltas.map(p =>
+      new Paragraph(`• ${p.nome}${p.categoria ? ` (${p.categoria})` : ''}`)
+    ) : [new Paragraph('—')]),
+    ...(justific.length ? [
+      hr(),
+      new Paragraph({ text: 'Justificadas', heading: HeadingLevel.HEADING_2 }),
+      ...justific.map(p => new Paragraph(`• ${p.nome}${p.categoria ? ` (${p.categoria})` : ''}`)),
+    ] : []),
+  ];
+
+  const doc = new DocxDocument({ sections: [{ children }] });
+  const filename = `treino_${treino.id}_detalhe.docx`;
+
+  if (Platform.OS === 'web') {
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+  } else {
+    const base64 = await Packer.toBase64String(doc);
+    const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory!;
+    const path = dir + filename;
+    await FileSystem.writeAsStringAsync(path, base64, { encoding: FileSystem.EncodingType.Base64 });
+    await Sharing.shareAsync(path, {
+      mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      dialogTitle:'Exportar DOCX',
+      UTI:'org.openxmlformats.wordprocessingml.document',
+    });
+  }
+}
+
+function hr() {
+  return new Paragraph({
+    border: { top: { color: 'CCCCCC', size: 6, space: 4, style: BorderStyle.SINGLE } },
+    spacing: { before: 160, after: 160 },
+  });
+}
+function kv(label: string, value: string) {
+  return new Paragraph({
+    children: [
+      new TextRun({ text: `${label}: `, bold: true }),
+      new TextRun({ text: value }),
+    ],
+  });
 }
 
 /* ================= Types ================= */
@@ -211,6 +314,22 @@ export default function TreinosScreen() {
     setPresCount(map);
   }
 
+  // dados de resumo que já usamos no CSV, reaproveitados no PDF/DOCX
+  function getResumoRows() {
+    return treinosFiltrados.map(t => {
+      const r = presCount[t.id] ?? { presente: 0, faltou: 0, justificou: 0 };
+      return {
+        data: new Date(t.data_hora).toLocaleString(),
+        presentes: r.presente,
+        faltas: r.faltou,
+        justificadas: r.justificou,
+        local: t.local ?? '',
+        descricao: t.descricao ?? '',
+        id: t.id,
+      };
+    });
+  }
+
   function csvEscape(v: any) {
     const s = v === null || v === undefined ? '' : String(v);
     const needsQuote = /[";\n,\r]/.test(s);
@@ -249,6 +368,10 @@ export default function TreinosScreen() {
     }
   }
 
+  function escapeHtml(s = '') {
+    return s.replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m] as string));
+  }
+
   function rangeLabelFromInputs(inicio: string, fim: string) {
     const label = (s: string) => s || 'todos';
     // se você já tem inicioStr/fimStr dos inputs de data:
@@ -258,6 +381,46 @@ export default function TreinosScreen() {
       if (fimStr) return fimStr;
     }
     return 'filtro_atual';
+  }
+
+  async function exportResumoDocx() {
+    const label = typeof inicioStr === 'string' ? rangeLabelFromInputs(inicioStr, fimStr) : 'filtro_atual';
+
+    const children: any[] = [
+      new Paragraph({ text: `Treinos — Resumo (${label})`, heading: HeadingLevel.HEADING_1 }),
+    ];
+
+    treinosFiltrados.forEach((t, i) => {
+      const r = presCount[t.id] ?? { presente: 0, faltou: 0, justificou: 0 };
+      if (i > 0) children.push(hr());
+      children.push(
+        new Paragraph({ text: new Date(t.data_hora).toLocaleString(), heading: HeadingLevel.HEADING_2 }),
+        kv('Local', t.local ?? ''),
+        kv('Descrição', t.descricao ?? ''),
+        kv('Presenças', String(r.presente)),
+        kv('Faltas', String(r.faltou)),
+        ...(r.justificou ? [kv('Justificadas', String(r.justificou))] : [])
+      );
+    });
+
+    const doc = new DocxDocument({ sections: [{ children }] });
+    const filename = `treinos_resumo_${label}.docx`;
+
+    if (Platform.OS === 'web') {
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    } else {
+      const base64 = await Packer.toBase64String(doc);
+      const dir = FileSystem.cacheDirectory || FileSystem.documentDirectory!;
+      const path = dir + filename;
+      await FileSystem.writeAsStringAsync(path, base64, { encoding: FileSystem.EncodingType.Base64 });
+      await Sharing.shareAsync(path, {
+        mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        dialogTitle:'Exportar DOCX',
+        UTI:'org.openxmlformats.wordprocessingml.document',
+      });
+    }
   }
 
   async function exportResumoCsv() {
@@ -336,6 +499,99 @@ export default function TreinosScreen() {
 
     const csv = toCsv(rows, headers);
     await downloadCsv(`treino_${treinoId}_detalhe.csv`, csv);
+  }
+
+  function ExportMenu({
+    onCsv,
+    onDocx,
+    compact = false,
+  }: {
+    onCsv: () => void;
+    onDocx: () => void;
+    compact?: boolean;
+  }) {
+    const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+    const btnRef = React.useRef<View>(null);
+
+    function openMenu() {
+      // mede posição do botão na tela e abre o modal
+      btnRef.current?.measureInWindow?.((x, y, w, h) => {
+        setPos({ x, y, w, h });
+        setOpen(true);
+      });
+    }
+
+    const MENU_WIDTH = 180;
+
+    // fallback: ancora no canto direito se a medida falhar
+    const top = pos ? pos.y + (compact ? pos.h : pos.h) + 4 : 60;
+    const left = pos ? Math.max(8, pos.x + pos.w - MENU_WIDTH) : undefined;
+    const right = pos ? undefined : 8; // fallback
+
+    return (
+      <>
+        <View ref={btnRef} collapsable={false}>
+          <TouchableOpacity style={styles.btnNeutral} onPress={openMenu}>
+            <Feather name="download" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Exportar ▾</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Modal
+          visible={open}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOpen(false)}
+        >
+          {/* overlay para fechar */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setOpen(false)}
+            style={{
+              flex: 1,
+              backgroundColor: 'transparent',
+            }}
+          >
+            {/* o menu em si (não usar zIndex aqui; Modal já está no topo) */}
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                top,
+                left,
+                right,
+              }}
+            >
+              <View
+                style={{
+                  width: MENU_WIDTH,
+                  alignSelf: left !== undefined ? 'flex-start' : 'flex-end',
+                  backgroundColor: '#1E2F47',
+                  borderWidth: 1,
+                  borderColor: '#3A506B',
+                  borderRadius: 10,
+                  paddingVertical: 6,
+                  elevation: 24,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.25,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 4 },
+                }}
+              >
+                <TouchableOpacity style={{ padding: 10 }} onPress={() => { setOpen(false); onCsv(); }}>
+                  <Text style={{ color: '#fff' }}>CSV</Text>
+                </TouchableOpacity>
+                <View style={{ height: 1, backgroundColor: '#3A506B' }} />
+                <TouchableOpacity style={{ padding: 10 }} onPress={() => { setOpen(false); onDocx(); }}>
+                  <Text style={{ color: '#fff' }}>DOCX</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </>
+    );
   }
 
   function isValidYYYYMM(s: string) {
@@ -1010,10 +1266,10 @@ export default function TreinosScreen() {
           )}
 
           {(isAdmin || isCoach) && (
-            <TouchableOpacity style={[styles.btnNeutral, { marginTop: 8 }]} onPress={() => exportDetalheTreinoCsv(item.id)}>
-              <Feather name="download" size={16} color="#fff" />
-              <Text style={styles.btnText}>  Exportar detalhes</Text>
-            </TouchableOpacity>
+            <ExportMenu
+              onCsv={() => exportDetalheTreinoCsv(item.id)}
+              onDocx={() => exportDetalheTreinoDocx(item)}
+            />
           )}
         </View>
       </View>
@@ -1039,16 +1295,16 @@ export default function TreinosScreen() {
       <Text style={styles.h1}>Treinos</Text>
 
       {(isAdmin || isCoach) && (
-        <View style={{ display:'flex', justifyContent: 'flex-end', marginBottom: 12, alignItems: 'center', gap: 8, flexDirection: 'row' }}>
+        <View style={{ display:'flex', justifyContent: 'flex-end', marginBottom: 12, alignItems: 'center', gap: 8, flexDirection: 'row', flexWrap:'wrap' }}>
           <TouchableOpacity style={styles.btnPrimary} onPress={openCreate}>
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Novo treino</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.btnNeutral} onPress={exportResumoCsv}>
-            <Feather name="download" size={16} color="#fff" />
-            <Text style={styles.btnText}>  Exportar resumo (filtro atual)</Text>
-          </TouchableOpacity>
+          <ExportMenu
+            onCsv={exportResumoCsv}
+            onDocx={exportResumoDocx}
+          />
         </View>
       )}
 
@@ -1139,6 +1395,15 @@ export default function TreinosScreen() {
             <Text style={styles.h1}>
               {readOnly ? 'Detalhes do treino' : (editTreino ? 'Editar treino' : 'Novo treino')}
             </Text>
+
+            {readOnly && (
+              <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+                <ExportMenu
+                  onCsv={() => exportDetalheTreinoCsv(editTreino!.id)}
+                  onDocx={() => exportDetalheTreinoDocx(editTreino!)}
+                />
+              </View>
+            )}
 
             {readOnly ? (
               // ==== MODO RELATÓRIO (sem maxHeight) ====
@@ -1405,3 +1670,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
