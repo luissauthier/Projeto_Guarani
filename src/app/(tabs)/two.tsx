@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, TextInput,
-  TouchableOpacity, FlatList, ActivityIndicator, Platform, Modal, ScrollView, Image
+  TouchableOpacity, FlatList, ActivityIndicator, Platform, 
+  Modal, ScrollView, Image, Linking
 } from 'react-native';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { supabase } from '@/src/lib/supabase';
@@ -11,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 /* ============== Helpers (fora do componente, não usam hooks) ============== */
 function debugSbError(ctx: string, error: any) {
@@ -48,6 +50,13 @@ function WebModal({
     </View>
   );
 }
+
+function todayYmd() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
 
 // Escapa ; converte undefined/null -> ''
 function csvEscape(v: any) {
@@ -221,6 +230,8 @@ export default function AdminScreen() {
     if (error) Alert.alert('Erro', 'Erro ao retornar para página de login, tente mais tarde.');
   }
 
+  const DRIVE_URL = 'https://drive.google.com/drive/folders/SEU_ID_AQUI'; // ⬅️ ajuste aqui
+
   const [tab, setTab] = useState<'jogadores' | 'voluntarios'>('jogadores');
 
   // BUSCA + FILTROS
@@ -236,6 +247,8 @@ export default function AdminScreen() {
   function handleYearTo(v: string) { setYearTo(onlyDigits(v)); }
   const [filtroTipoVol, setFiltroTipoVol] = useState<TipoVol | 'todos'>('todos');
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('todos');
+  const [filtroGuarani, setFiltroGuarani] = useState<'todos'|'sim'|'nao'>('todos');
+  const [filtroTermo, setFiltroTermo] = useState<'todos'|'sim'|'nao'>('todos');
 
   // DATA
   const [loading, setLoading] = useState(true);
@@ -286,18 +299,29 @@ export default function AdminScreen() {
     return jogadores.filter(j => {
       if (filtroStatus !== 'todos' && j.status !== filtroStatus) return false;
 
+      // ✅ novos filtros booleanos
+      if (filtroGuarani !== 'todos') {
+        const want = (filtroGuarani === 'sim');
+        if ((j.is_jogador_guarani ?? false) !== want) return false;
+      }
+      if (filtroTermo !== 'todos') {
+        const want = (filtroTermo === 'sim');
+        if ((j.termo_entregue ?? false) !== want) return false;
+      }
+
       const cat = getCategoriaAno(j);
       if (yf !== null && !(cat != null && cat >= yf)) return false;
       if (yt !== null && !(cat != null && cat <= yt)) return false;
 
       if (!q) return true;
       const catStr = cat?.toString() ?? '';
-      const blob = [j.nome, j.email ?? '', j.telefone ?? '', catStr, j.status, j.responsavel_nome ?? '']
-        .join(' ')
-        .toLowerCase();
+      const blob = [
+        j.nome, j.email ?? '', j.telefone ?? '', catStr, j.status, j.responsavel_nome ?? '',
+        j.observacao ?? ''
+      ].join(' ').toLowerCase();
       return blob.includes(q);
     });
-  }, [jogadores, search, filtroStatus, yearFrom, yearTo]);
+  }, [jogadores, search, filtroStatus, yearFrom, yearTo, filtroGuarani, filtroTermo]);
 
   const voluntariosFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -364,8 +388,13 @@ export default function AdminScreen() {
   const [savingJog, setSavingJog] = useState(false);
 
   function openEditJog(j?: Jogador) {
-    if (j) { setEditJog(j); setFormJog(j); }
-    else { setEditJog(null); setFormJog({ status: 'pre_inscrito' as StatusJog }); }
+    if (j) { 
+      setEditJog(j); 
+      setFormJog(j); 
+    } else { 
+      setEditJog(null); 
+      setFormJog({ status: 'pre_inscrito' as StatusJog, data_nascimento: todayYmd() }); // 👈 default = hoje
+    }
     setModalJog(true);
   }
 
@@ -687,6 +716,30 @@ export default function AdminScreen() {
                 {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
               </Picker>
             </View>
+                            <View style={styles.colStatus}>
+                  <Text style={styles.label}>Jogador do Guarani</Text>
+                  <Picker
+                    selectedValue={filtroGuarani}
+                    onValueChange={(v)=>setFiltroGuarani(v as any)}
+                    style={[styles.picker, styles.shrink]}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    <Picker.Item label="Sim" value="sim" />
+                    <Picker.Item label="Não" value="nao" />
+                  </Picker>
+                </View>
+                <View style={styles.colStatus}>
+                  <Text style={styles.label}>Termo assinado</Text>
+                  <Picker
+                    selectedValue={filtroTermo}
+                    onValueChange={(v)=>setFiltroTermo(v as any)}
+                    style={[styles.picker, styles.shrink]}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    <Picker.Item label="Sim" value="sim" />
+                    <Picker.Item label="Não" value="nao" />
+                  </Picker>
+                </View>
           </View>
         ) : (
           <View style={styles.row}>
@@ -717,6 +770,10 @@ export default function AdminScreen() {
 
       {/* AÇÕES */}
       <View style={{ flexDirection:'row', justifyContent:'flex-end', gap: 10, marginBottom: 12 }}>
+        <TouchableOpacity style={styles.btnNeutral} onPress={() => Linking.openURL(DRIVE_URL)}>
+          <Feather name="external-link" size={16} color="#fff" />
+          <Text style={styles.btnText}>  Abrir Drive</Text>
+        </TouchableOpacity>
         {tab==='jogadores' ? (
           <>
             <TouchableOpacity style={styles.btnNeutral} onPress={exportJogadoresCsv}>
@@ -853,13 +910,42 @@ export default function AdminScreen() {
           value={formJog.nome ?? ''}
           onChangeText={(t) => setFormJog((s) => ({ ...s, nome: t }))}
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Data nasc. (AAAA-MM-DD)"
-          placeholderTextColor="#A0A0A0"
-          value={formJog.data_nascimento ?? ''}
-          onChangeText={(t) => setFormJog((s) => ({ ...s, data_nascimento: t }))}
-        />
+        <Text style={styles.label}>Data de nascimento</Text>
+        {Platform.OS === 'web' ? (
+          <input
+            type="date"
+            value={(formJog.data_nascimento ?? todayYmd())}
+            onChange={(e) => setFormJog(s => ({ ...s, data_nascimento: e.currentTarget.value }))}
+            style={{
+              padding: 10,
+              border: '1px solid #4A6572',
+              backgroundColor: '#203A4A',
+              color: '#FFF',
+              borderRadius: 10,
+              height: 50,
+              marginBottom: 10,
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <DateTimePicker
+            mode="date"
+            value={
+              formJog.data_nascimento
+                ? new Date(formJog.data_nascimento + 'T00:00:00')
+                : new Date()
+            }
+            onChange={(_, d) => {
+              if (d) {
+                const pad = (n: number) => String(n).padStart(2, '0');
+                const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                setFormJog(s => ({ ...s, data_nascimento: v }));
+              }
+            }}
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          />
+        )}
 
         <Text style={{ color: '#B0B0B0', marginBottom: 10 }}>
           Categoria (ano): {yearFromDateOnly(formJog.data_nascimento) ?? (editJog?.categoria ?? '-')}
