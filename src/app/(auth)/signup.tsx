@@ -1,16 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import {
   SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Alert,
-  Pressable,
-  ActivityIndicator
+  Pressable, ActivityIndicator, Platform
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Feather } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+function todayYmd() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 
 export default function Signup() {
   const [nome, setNome] = useState('');
-  const [dataNascimento, setDataNascimento] = useState(''); // yyyy-mm-dd
+  const [dataNascimento, setDataNascimento] = useState(todayYmd()); // yyyy-mm-dd
   const [responsavel, setResponsavel] = useState('');
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
@@ -94,8 +100,42 @@ export default function Signup() {
         <TextInput placeholder="Nome completo do jogador" placeholderTextColor="#A0A0A0"
           value={nome} onChangeText={setNome} style={styles.input} />
 
-        <TextInput placeholder="Data de nascimento (AAAA-MM-DD)" placeholderTextColor="#A0A0A0"
-          value={dataNascimento} onChangeText={setDataNascimento} style={styles.input} />
+        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data de nascimento</Text>
+
+        {Platform.OS === 'web' ? (
+          <input
+            type="date"
+            value={dataNascimento || todayYmd()}
+            onChange={(e) => setDataNascimento(e.currentTarget.value)}
+            max={todayYmd()} // evita datas futuras no web
+            style={{
+              padding: 16,
+              border: '1px solid #4A6572',
+              backgroundColor: '#203A4A',
+              color: '#FFF',
+              borderRadius: 12,
+              height: 55,
+              marginBottom: 12,
+              width: '100%',
+              boxSizing: 'border-box',
+              fontSize: 16,
+            }}
+          />
+        ) : (
+          <DateTimePicker
+            mode="date"
+            value={dataNascimento ? new Date(dataNascimento + 'T00:00:00') : new Date()}
+            onChange={(_, d) => {
+              if (d) {
+                const pad = (n: number) => String(n).padStart(2, '0');
+                const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                setDataNascimento(v);
+              }
+            }}
+            maximumDate={new Date()} // evita datas futuras no mobile
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          />
+        )}
 
         {(idade !== null || categoriaAno !== null) && (
           <Text style={{ color: '#E0E0E0', marginBottom: 10 }}>
