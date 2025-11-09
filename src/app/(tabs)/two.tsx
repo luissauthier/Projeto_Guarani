@@ -385,6 +385,32 @@ export default function AdminScreen() {
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
 
+  // === Feedback abaixo do nascimento (igual ao Signup) ===
+  const idade = useMemo(() => {
+    const s = formJog.data_nascimento;
+    if (!s) return null;
+    const dob = new Date(s);
+    if (isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    return age;
+  }, [formJog.data_nascimento]);
+
+  const categoriaAno = useMemo(() => {
+    // mesma regra do banco: ano da data de nascimento
+    const s = formJog.data_nascimento;
+    const y = s ? Number(s.slice(0, 4)) : null;
+    if (!y || Number.isNaN(y)) {
+      // mantém o valor atual do jogador se estiver editando
+      return editJog?.categoria ?? null;
+    }
+    return y;
+  }, [formJog.data_nascimento, editJog?.categoria]);
+
+  const responsavelObrigatorio = idade !== null && idade < 18;
+
   const [savingJog, setSavingJog] = useState(false);
 
   function openEditJog(j?: Jogador) {
@@ -947,10 +973,13 @@ export default function AdminScreen() {
           />
         )}
 
-        <Text style={{ color: '#B0B0B0', marginBottom: 10 }}>
-          Categoria (ano): {yearFromDateOnly(formJog.data_nascimento) ?? (editJog?.categoria ?? '-')}
-        </Text>
-
+        {(idade !== null || categoriaAno !== null) && (
+          <Text style={{ color: '#E0E0E0', marginBottom: 10 }}>
+            {idade !== null ? `Idade: ${idade} anos ` : ''}
+            {categoriaAno !== null ? `• Categoria (ano): ${categoriaAno}` : ''}
+            {responsavelObrigatorio ? ' • (responsável obrigatório)' : ''}
+          </Text>
+        )}
 
         <TextInput
           style={styles.input}
