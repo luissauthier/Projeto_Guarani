@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, TextInput,
   TouchableOpacity, FlatList, ActivityIndicator, Platform, 
-  Modal, ScrollView, Image, Linking
+  Modal, ScrollView, Image, Linking,
+  Switch
 } from 'react-native';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { supabase } from '@/src/lib/supabase';
@@ -171,6 +172,29 @@ const VOL_LABEL: Record<TipoVol, string> = {
   admin: 'admin',
 };
 
+type TipoPessoa = 'pf' | 'pj';
+type TipoDoador = 'mensal' | 'anual' | 'unico'; // Adicionei 'unico' como opção
+type StatusParceiro = 'ativo' | 'inativo';
+
+type Parceiro = {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  endereco: string | null;
+  tipo_pessoa: TipoPessoa;
+  cpf_cnpj: string | null;
+  tipo_doador: TipoDoador;
+  termo_assinado: boolean;
+  status: StatusParceiro;
+  observacao: string | null;
+  created_at: string; // Para "Apoiador desde"
+};
+
+const TIPO_PESSOA_OPTIONS: TipoPessoa[] = ['pf', 'pj'];
+const TIPO_DOADOR_OPTIONS: TipoDoador[] = ['mensal', 'anual', 'unico'];
+const STATUS_PARCEIRO_OPTIONS: StatusParceiro[] = ['ativo', 'inativo'];
+
 const formatPgDateOnly = (s?: string | null) => {
   if (!s) return '-';
   const [y, m, d] = s.split('-');
@@ -232,16 +256,28 @@ export default function AdminScreen() {
 
   const DRIVE_URL = 'https://drive.google.com/drive/folders/SEU_ID_AQUI'; // ⬅️ ajuste aqui
 
-  const [tab, setTab] = useState<'jogadores' | 'voluntarios'>('jogadores');
+  const [tab, setTab] = useState<'jogadores' | 'colaboradores' | 'parceiros'>('jogadores');
 
   // BUSCA + FILTROS
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<StatusJog | 'todos'>('todos');
+  const [filtroStatusParceiro, setFiltroStatusParceiro] = useState<StatusParceiro | 'todos'>('todos');
+  const [filtroTipoDoador, setFiltroTipoDoador] = useState<TipoDoador | 'todos'>('todos');
 
   // novos filtros por ano (de/até)
   const [yearFrom, setYearFrom] = useState<string>('');
   const [yearTo, setYearTo] = useState<string>('');
-
+  
+function formatLocalForInput(iso: string) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
   function onlyDigits(v: string) { return v.replace(/\D/g, ''); }
   function handleYearFrom(v: string) { setYearFrom(onlyDigits(v)); }
   function handleYearTo(v: string) { setYearTo(onlyDigits(v)); }
@@ -253,7 +289,8 @@ export default function AdminScreen() {
   // DATA
   const [loading, setLoading] = useState(true);
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
-  const [voluntarios, setVoluntarios] = useState<UserRow[]>([]);
+  const [colaboradores, setcolaboradores] = useState<UserRow[]>([]);
+  const [parceiros, setParceiros] = useState<Parceiro[]>([]);
 
   const anosDisponiveis = useMemo(() => {
     const anos = new Set<number>();
@@ -281,7 +318,20 @@ export default function AdminScreen() {
     .select('id, full_name, email, telefone, ativo, observacoes, type_user, created_at, updated_at') // <- type_user
     .order('created_at', { ascending: false });
     if (eu) console.log('users err:', eu);
-    setVoluntarios((users ?? []) as any);
+    setcolaboradores((users ?? []) as any);
+
+    const { data: par, error: ep } = await supabase
+      .from('parceiros') // <<< Presume que a tabela se chama 'parceiros'
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (ep) {
+      console.log('parceiros err:', ep);
+      Alert.alert('Erro ao buscar parceiros', ep.message);
+      setParceiros([]);
+    } else {
+      setParceiros((par ?? []) as any);
+    }
 
     setLoading(false);
   }, []);
@@ -323,9 +373,9 @@ export default function AdminScreen() {
     });
   }, [jogadores, search, filtroStatus, yearFrom, yearTo, filtroGuarani, filtroTermo]);
 
-  const voluntariosFiltrados = useMemo(() => {
+  const colaboradoresFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return voluntarios.filter(v => {
+    return colaboradores.filter(v => {
       if (filtroTipoVol !== 'todos' && v.type_user !== filtroTipoVol) return false; // <- type_user
       if (filtroAtivo === 'ativos' && !v.ativo) return false;
       if (filtroAtivo === 'inativos' && v.ativo) return false;
@@ -340,7 +390,20 @@ export default function AdminScreen() {
       ].join(' ').toLowerCase();
       return blob.includes(q);
     });
-  }, [voluntarios, search, filtroTipoVol, filtroAtivo]);
+  }, [colaboradores, search, filtroTipoVol, filtroAtivo]);
+
+  const parceirosFiltrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return parceiros.filter(p => {
+      if (filtroStatusParceiro !== 'todos' && p.status !== filtroStatusParceiro) return false;
+      if (filtroTipoDoador !== 'todos' && p.tipo_doador !== filtroTipoDoador) return false;
+      if (!q) return true;
+      const blob = [p.nome, p.email ?? '', p.telefone ?? '', p.cpf_cnpj ?? '', p.endereco ?? '']
+        .join(' ')
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [parceiros, search, filtroStatusParceiro, filtroTipoDoador]);
 
   async function exportJogadoresCsv() {
     if (!jogadoresFiltrados.length) {
@@ -362,9 +425,9 @@ export default function AdminScreen() {
     await downloadCsv(`jogadores_${new Date().toISOString().slice(0,10)}.csv`, csv);
   }
 
-  async function exportVoluntariosCsv() {
-    if (!voluntariosFiltrados.length) {
-      Alert.alert('Exportar', 'Nenhum voluntário para exportar.');
+  async function exportcolaboradoresCsv() {
+    if (!colaboradoresFiltrados.length) {
+      Alert.alert('Exportar', 'Nenhum Colaborador para exportar.');
       return;
     }
     const headers = [
@@ -376,8 +439,8 @@ export default function AdminScreen() {
       { key: 'created_at', label: 'Criado em' },
       { key: 'id', label: 'ID' },
     ];
-    const csv = toCsv(voluntariosFiltrados, headers);
-    await downloadCsv(`voluntarios_${new Date().toISOString().slice(0,10)}.csv`, csv);
+    const csv = toCsv(colaboradoresFiltrados, headers);
+    await downloadCsv(`colaboradores_${new Date().toISOString().slice(0,10)}.csv`, csv);
   }
 
   // ====== MODAIS JOGADOR ======
@@ -474,12 +537,28 @@ export default function AdminScreen() {
     }
   }
 
+  function openEditPar(p?: Parceiro) {
+    if (p) {
+      setEditPar(p);
+      setFormPar(p);
+    } else {
+      setEditPar(null);
+      setFormPar({
+        status: 'ativo',
+        tipo_pessoa: 'pf',
+        tipo_doador: 'unico',
+        termo_assinado: false,
+      });
+    }
+    setModalPar(true);
+  }
+
   // ====== MODAL DE EXCLUSÃO (Genérico) ======
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string, nome: string } | null>(null);
-  const [deleteEntityType, setDeleteEntityType] = useState<'jogador' | 'voluntario' | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, nome?: string, full_name?: string | null } | null>(null);
+  const [deleteEntityType, setDeleteEntityType] = useState<'jogador' | 'voluntario'| 'parceiro' | null>(null);
 
-  function openDeleteConfirm(item: { id: string, nome: string }, type: 'jogador' | 'voluntario') {
+  function openDeleteConfirm(item: { id: string, nome?: string, full_name?: string | null }, type: 'jogador' | 'voluntario' | 'parceiro') {
     setItemToDelete(item);
     setDeleteEntityType(type);
     setDeleteModalVisible(true);
@@ -493,7 +572,55 @@ export default function AdminScreen() {
     if (!itemToDelete || !deleteEntityType) return;
     if (deleteEntityType === 'jogador') await deletarJog(itemToDelete.id);
     else if (deleteEntityType === 'voluntario') await deletarVol(itemToDelete.id);
+    else if (deleteEntityType === 'parceiro') {
+      // VVV CRIE UMA NOVA FUNÇÃO 'deletarParceiro' VVV
+      await deletarParceiro(itemToDelete.id);
+    }
     closeDeleteConfirm();
+  }
+
+  async function saveParceiro() {
+    if (!formPar?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome do parceiro.');
+    
+    try {
+      setSavingPar(true);
+
+      const payload: Omit<Parceiro, 'id' | 'created_at'> = {
+        nome: formPar.nome!,
+        telefone: formPar.telefone ?? null,
+        email: formPar.email ?? null,
+        endereco: formPar.endereco ?? null,
+        tipo_pessoa: formPar.tipo_pessoa ?? 'pf',
+        cpf_cnpj: formPar.cpf_cnpj ?? null,
+        tipo_doador: formPar.tipo_doador ?? 'unico',
+        termo_assinado: formPar.termo_assinado ?? false,
+        status: formPar.status ?? 'ativo',
+        observacao: formPar.observacao ?? null,
+      };
+
+      let err;
+      if (editPar) {
+        // UPDATE
+        const { error } = await supabase.from('parceiros').update(payload).eq('id', editPar.id);
+        err = error;
+      } else {
+        // INSERT
+        const { error } = await supabase.from('parceiros').insert(payload as any);
+        err = error;
+      }
+
+      if (err) throw err;
+      setModalPar(false);
+      await load();
+      setDebugMsg('✅ Dados do parceiro salvos.');
+
+    } catch (e: any) {
+      console.log('[saveParceiro] erro:', e);
+      const errorMsg = debugSbError('salvar parceiro', e);
+      Alert.alert('Erro ao Salvar Parceiro', errorMsg);
+    } finally {
+      setSavingPar(false);
+    }
   }
 
   /* ================= Excluir JOGADOR ================= */
@@ -521,12 +648,16 @@ export default function AdminScreen() {
     }
   }
 
-  // ====== VOLUNTÁRIOS (users) ======
+  // ====== Colaborador (users) ======
   const [modalVol, setModalVol] = useState(false);
   const [editVol, setEditVol] = useState<UserRow | null>(null);
   const [formVol, setFormVol] = useState<Partial<UserRow>>({});
   const [savingVol, setSavingVol] = useState(false);
   const [newPassword, setNewPassword] = useState<string>('');
+  const [modalPar, setModalPar] = useState(false);
+  const [editPar, setEditPar] = useState<Parceiro | null>(null);
+  const [formPar, setFormPar] = useState<Partial<Parceiro>>({});
+  const [savingPar, setSavingPar] = useState(false);
 
   function openEditVol(v?: UserRow) {
     if (v) {
@@ -541,7 +672,7 @@ export default function AdminScreen() {
   }
 
   async function saveVol() {
-    if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do voluntário.');
+    if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do Colaborador.');
     if (!formVol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
 
     try {
@@ -582,13 +713,13 @@ export default function AdminScreen() {
         setNewPassword('');
 
         await load();
-        setDebugMsg('✅ Dados do voluntário salvos.');
-        Alert.alert('Sucesso', 'Dados do voluntário salvos.');
+        setDebugMsg('✅ Dados do Colaborador salvos.');
+        Alert.alert('Sucesso', 'Dados do Colaborador salvos.');
         return;
       }
 
       // ====== C R I A R  ======
-      if (!newPassword?.trim()) return Alert.alert('Atenção', 'Defina uma senha para o voluntário.');
+      if (!newPassword?.trim()) return Alert.alert('Atenção', 'Defina uma senha para o Colaborador.');
 
       const { data: sess } = await supabase.auth.getSession();
       const accessToken = sess?.session?.access_token ?? '';
@@ -613,9 +744,9 @@ export default function AdminScreen() {
           const txt = await res.text();
           let msg = txt;
           try { msg = JSON.parse(txt)?.error ?? txt; } catch {}
-          Alert.alert('Erro ao criar voluntário', msg);
+          Alert.alert('Erro ao criar Colaborador', msg);
         } catch {
-          Alert.alert('Erro ao criar voluntário', (error as any)?.message ?? 'Falha desconhecida');
+          Alert.alert('Erro ao criar Colaborador', (error as any)?.message ?? 'Falha desconhecida');
         }
         return;
       }
@@ -626,17 +757,17 @@ export default function AdminScreen() {
       setNewPassword('');
 
       await load();
-      setDebugMsg('✅ Voluntário criado com sucesso.');
-      Alert.alert('Sucesso', 'Voluntário criado com senha.');
+      setDebugMsg('✅ Colaborador criado com sucesso.');
+      Alert.alert('Sucesso', 'Colaborador criado com senha.');
     } catch (e: any) {
       console.log('[saveVol] erro:', e);
-      Alert.alert('Erro ao Salvar Voluntário', debugSbError('salvar voluntário', e));
+      Alert.alert('Erro ao Salvar Colaborador', debugSbError('salvar Colaborador', e));
     } finally {
       setSavingVol(false);
     }
   }
 
-  /* ================= "Excluir" VOLUNTÁRIO ================= */
+  /* ================= "Excluir" Colaborador ================= */
   async function deletarVol(id: string) {
     console.log('[UI] deletarVol start', id);
     await debugLogSession();
@@ -657,9 +788,26 @@ export default function AdminScreen() {
       }
 
       await load();
-      setDebugMsg('✅ Voluntário excluído definitivamente.');
+      setDebugMsg('✅ Colaborador excluído definitivamente.');
     } catch (e: any) {
-      const msg = debugSbError('delete voluntário catch', e);
+      const msg = debugSbError('delete Colaborador catch', e);
+      setDebugMsg(msg);
+    }
+  }
+ /* ================= "Excluir" PARCEIRO ================= */
+  async function deletarParceiro(id: string) {
+    console.log('[UI] deletarParceiro start', id);
+    try {
+      const delPar = await supabase.from('parceiros').delete().eq('id', id).select('id');
+      if (delPar.error) {
+        const msg = debugSbError('delete parceiro', delPar.error);
+        setDebugMsg(msg);
+        return;
+      }
+      await load();
+      setDebugMsg('✅ Parceiro excluído com sucesso.');
+    } catch (e: any) {
+      const msg = debugSbError('delete parceiro catch', e);
       setDebugMsg(msg);
     }
   }
@@ -687,11 +835,14 @@ export default function AdminScreen() {
 
       {/* SEGMENT */}
       <View style={styles.segment}>
-        <TouchableOpacity onPress={()=>setTab('jogadores')} style={[styles.segmentBtn, tab==='jogadores' && styles.segmentBtnActive]}>
+        <TouchableOpacity onPress={() => { setTab('jogadores'); setSearch(''); }} style={[styles.segmentBtn, tab==='jogadores' && styles.segmentBtnActive]}>
           <Text style={[styles.segmentTxt, tab==='jogadores' && styles.segmentTxtActive]}>Jogadores</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={()=>setTab('voluntarios')} style={[styles.segmentBtn, tab==='voluntarios' && styles.segmentBtnActive]}>
-          <Text style={[styles.segmentTxt, tab==='voluntarios' && styles.segmentTxtActive]}>Voluntários</Text>
+        <TouchableOpacity onPress={() => { setTab('colaboradores'); setSearch(''); }} style={[styles.segmentBtn, tab==='colaboradores' && styles.segmentBtnActive]}>
+          <Text style={[styles.segmentTxt, tab==='colaboradores' && styles.segmentTxtActive]}>Colaboradores</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => { setTab('parceiros'); setSearch(''); }} style={[styles.segmentBtn, tab==='parceiros' && styles.segmentBtnActive]}>
+          <Text style={[styles.segmentTxt, tab==='parceiros' && styles.segmentTxtActive]}>Parceiros</Text>
         </TouchableOpacity>
       </View>
 
@@ -705,7 +856,10 @@ export default function AdminScreen() {
           onChangeText={setSearch}
         />
 
-        {tab==='jogadores' ? (
+        {/* VVV LÓGICA DE FILTRO CORRIGIDA VVV */}
+
+        {/* Filtros de Jogadores (só aparece na aba 'jogadores') */}
+        {tab === 'jogadores' && (
           <View style={styles.rowWrap}>
             {/* Categoria (ano) — flexível */}
             <View style={styles.colCategory}>
@@ -742,45 +896,48 @@ export default function AdminScreen() {
                 {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
               </Picker>
             </View>
-                            <View style={styles.colStatus}>
-                  <Text style={styles.label}>Jogador do Guarani</Text>
-                  <Picker
-                    selectedValue={filtroGuarani}
-                    onValueChange={(v)=>setFiltroGuarani(v as any)}
-                    style={[styles.picker, styles.shrink]}
-                  >
-                    <Picker.Item label="Todos" value="todos" />
-                    <Picker.Item label="Sim" value="sim" />
-                    <Picker.Item label="Não" value="nao" />
-                  </Picker>
-                </View>
-                <View style={styles.colStatus}>
-                  <Text style={styles.label}>Termo assinado</Text>
-                  <Picker
-                    selectedValue={filtroTermo}
-                    onValueChange={(v)=>setFiltroTermo(v as any)}
-                    style={[styles.picker, styles.shrink]}
-                  >
-                    <Picker.Item label="Todos" value="todos" />
-                    <Picker.Item label="Sim" value="sim" />
-                    <Picker.Item label="Não" value="nao" />
-                  </Picker>
-                </View>
+            <View style={styles.colStatus}>
+              <Text style={styles.label}>Jogador do Guarani</Text>
+              <Picker
+                selectedValue={filtroGuarani}
+                onValueChange={(v)=>setFiltroGuarani(v as any)}
+                style={[styles.picker, styles.shrink]}
+              >
+                <Picker.Item label="Todos" value="todos" />
+                <Picker.Item label="Sim" value="sim" />
+                <Picker.Item label="Não" value="nao" />
+              </Picker>
+            </View>
+            <View style={styles.colStatus}>
+              <Text style={styles.label}>Termo assinado</Text>
+              <Picker
+                selectedValue={filtroTermo}
+                onValueChange={(v)=>setFiltroTermo(v as any)}
+                style={[styles.picker, styles.shrink]}
+              >
+                <Picker.Item label="Todos" value="todos" />
+                <Picker.Item label="Sim" value="sim" />
+                <Picker.Item label="Não" value="nao" />
+              </Picker>
+            </View>
           </View>
-        ) : (
+        )}
+
+        {/* Filtros de Colaborador (só aparece na aba 'colaboradores') */}
+        {tab === 'colaboradores' && (
           <View style={styles.row}>
             <View style={styles.col}>
               <Text style={styles.label}>Tipo</Text>
-          <Picker
-            selectedValue={filtroTipoVol}
-            onValueChange={(v)=>setFiltroTipoVol(v as any)}
-            style={styles.picker}
-          >
-            <Picker.Item label="Todos" value="todos" />
-            {VOL_TIPOS.map(t => (
-              <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
-            ))}
-          </Picker>
+              <Picker
+                selectedValue={filtroTipoVol}
+                onValueChange={(v)=>setFiltroTipoVol(v as any)}
+                style={styles.picker}
+              >
+                <Picker.Item label="Todos" value="todos" />
+                {VOL_TIPOS.map(t => (
+                  <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
+                ))}
+              </Picker>
             </View>
             <View style={styles.col}>
               <Text style={styles.label}>Status</Text>
@@ -792,6 +949,29 @@ export default function AdminScreen() {
             </View>
           </View>
         )}
+
+        {/* Filtros de Parceiros (só aparece na aba 'parceiros') */}
+        {tab === 'parceiros' && (
+          <View style={styles.row}>
+            <View style={styles.col}>
+              <Text style={styles.label}>Status</Text>
+              <Picker selectedValue={filtroStatusParceiro} onValueChange={(v)=>setFiltroStatusParceiro(v as any)} style={styles.picker}>
+                <Picker.Item label="Todos" value="todos" />
+                {STATUS_PARCEIRO_OPTIONS.map(s => <Picker.Item key={s} label={s.charAt(0).toUpperCase() + s.slice(1)} value={s} />)}
+              </Picker>
+            </View>
+            <View style={styles.col}>
+              <Text style={styles.label}>Tipo Doador</Text>
+              <Picker selectedValue={filtroTipoDoador} onValueChange={(v)=>setFiltroTipoDoador(v as any)} style={styles.picker}>
+                <Picker.Item label="Todos" value="todos" />
+                {TIPO_DOADOR_OPTIONS.map(t => <Picker.Item key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} value={t} />)}
+              </Picker>
+            </View>
+          </View>
+        )}
+        
+        {/* ^^^ FIM DA LÓGICA DE FILTRO CORRIGIDA ^^^ */}
+
       </View>
 
       {/* AÇÕES */}
@@ -800,38 +980,33 @@ export default function AdminScreen() {
           <Feather name="external-link" size={16} color="#fff" />
           <Text style={styles.btnText}>  Abrir Drive</Text>
         </TouchableOpacity>
-        {tab==='jogadores' ? (
-          <>
-            <TouchableOpacity style={styles.btnNeutral} onPress={exportJogadoresCsv}>
-              <Feather name="download" size={16} color="#fff" />
-              <Text style={styles.btnText}>  Exportar CSV</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnPrimary} onPress={()=>openEditJog()}>
-              <Feather name="user-plus" size={16} color="#fff" />
-              <Text style={styles.btnText}>  Cadastrar Jogador</Text>
-            </TouchableOpacity>
-          </>
+
+        {tab === 'jogadores' ? (
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog()}>
+            <Feather name="user-plus" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Cadastrar Jogador</Text>
+          </TouchableOpacity>
+        ) : tab === 'colaboradores' ? (
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol()}>
+            <Feather name="user-plus" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Cadastrar Colaborador</Text>
+          </TouchableOpacity>
         ) : (
-          <>
-            <TouchableOpacity style={styles.btnNeutral} onPress={exportVoluntariosCsv}>
-              <Feather name="download" size={16} color="#fff" />
-              <Text style={styles.btnText}>  Exportar CSV</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.btnPrimary}
-              onPress={() => { console.log('[UI] abrir modal voluntario'); openEditVol(); }}
-            >
-              <Feather name="user-plus" size={16} color="#fff" />
-              <Text style={styles.btnText}>  Cadastrar Voluntário</Text>
-            </TouchableOpacity>
-          </>
+          // VVV ADICIONE ESTE BLOCO VVV
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar()}>
+            <Feather name="user-plus" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Cadastrar Parceiro</Text>
+          </TouchableOpacity>
+          // ^^^ FIM DO BLOCO ^^^
         )}
       </View>
 
       {/* LISTAS EM TABELA */}
-      {loading ? (
+      {loading && (
         <ActivityIndicator color="#007BFF" style={{ marginTop: 40 }} />
-      ) : tab === 'jogadores' ? (
+      )}
+
+      {!loading && tab === 'jogadores' && (
         <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
           <View style={{ width: 180 + 120 + 120 + 140 + 160 + 240 + 220 + 180 }}>
             <FlatList
@@ -853,7 +1028,9 @@ export default function AdminScreen() {
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
                   <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>{formatPgDateOnly(item.data_nascimento)}</Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>
+                    {formatPgDateOnly(item.data_nascimento)}
+                  </Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
@@ -865,7 +1042,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm({ id: item.id, nome: item.nome }, 'jogador')}
+                      onPress={() => openDeleteConfirm(item, 'jogador')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -877,11 +1054,13 @@ export default function AdminScreen() {
             />
           </View>
         </ScrollView>
-      ) : (
+      )}
+
+      {!loading && tab === 'colaboradores' && (
         <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
           <View style={{ width: 220 + 160 + 120 + 160 + 260 + 180 }}>
             <FlatList
-              data={voluntariosFiltrados}
+              data={colaboradoresFiltrados}
               keyExtractor={(i) => i.id}
               contentContainerStyle={{ paddingBottom: 40 }}
               ListHeaderComponent={
@@ -896,10 +1075,8 @@ export default function AdminScreen() {
               }
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]}>
-                    {item.type_user ? VOL_LABEL[item.type_user as TipoVol] : '-'}
-                  </Text>
+                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]}>{VOL_LABEL[item.type_user!]}</Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
@@ -909,7 +1086,7 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm({ id: item.id, nome: item.full_name ?? '' }, 'voluntario')}
+                      onPress={() => openDeleteConfirm(item, 'voluntario')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -917,7 +1094,49 @@ export default function AdminScreen() {
                   </View>
                 </View>
               )}
-              ListEmptyComponent={<Text style={styles.empty}>Nenhum voluntário encontrado.</Text>}
+              ListEmptyComponent={<Text style={styles.empty}>Nenhum Colaborador encontrado.</Text>}
+            />
+          </View>
+        </ScrollView>
+      )}
+
+      {!loading && tab === 'parceiros' && (
+        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
+          <View style={{ width: 180 + 120 + 150 + 100 + 100 + 180 }}>
+            <FlatList
+              data={parceirosFiltrados}
+              keyExtractor={(i) => i.id}
+              ListHeaderComponent={
+                <View style={tableStyles.headerRow}>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Telefone</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 150 }]}>Doador</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Termo</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Status</Text>
+                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                </View>
+              }
+              renderItem={({ item, index }) => (
+                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                  <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={[tableStyles.cell, { width: 120 }]}>{item.telefone ?? '-'}</Text>
+                  <Text style={[tableStyles.cell, { width: 150 }]}>{item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}</Text>
+                  <Text style={[tableStyles.cell, { width: 100 }]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
+                  <Text style={[tableStyles.cell, { width: 100 }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
+                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
+                      <Text style={styles.btnText}>Editar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.btnDanger}
+                      onPress={() => openDeleteConfirm(item, 'parceiro')}
+                    >
+                      <Text style={styles.btnText}>Excluir</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
             />
           </View>
         </ScrollView>
@@ -1063,11 +1282,11 @@ export default function AdminScreen() {
     </SafeAreaView>
   </Modal>
           
-  {/* MODAL VOLUNTÁRIO (USERS) */}
+  {/* MODAL Colaborador (USERS) */}
   <Modal visible={modalVol} animationType="slide" onRequestClose={() => setModalVol(false)}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={styles.h1}>{editVol ? 'Editar Voluntário' : 'Cadastrar Voluntário'}</Text>
+        <Text style={styles.h1}>{editVol ? 'Editar Colaborador' : 'Cadastrar Colaborador'}</Text>
 
         <TextInput
           style={styles.input}
@@ -1096,7 +1315,7 @@ export default function AdminScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder={editVol ? "Nova senha (opcional)" : "Senha do voluntário"}
+          placeholder={editVol ? "Nova senha (opcional)" : "Senha do Colaborador"}
           placeholderTextColor="#A0A0A0"
           secureTextEntry
           value={newPassword}
@@ -1146,6 +1365,135 @@ export default function AdminScreen() {
     </SafeAreaView>
   </Modal>
 
+  <Modal visible={modalPar} onRequestClose={() => setModalPar(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <Text style={styles.h1}>{editPar ? 'Editar Parceiro' : 'Cadastrar Parceiro'}</Text>
+
+            <Text style={styles.label}>Nome</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Nome completo"
+              placeholderTextColor="#A0A0A0"
+              value={formPar.nome ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, nome: t }))}
+            />
+            
+            <Text style={styles.label}>Telefone</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Telefone"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="phone-pad"
+              value={formPar.telefone ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, telefone: t }))}
+            />
+
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="E-mail"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={formPar.email ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, email: t }))}
+            />
+
+            <Text style={styles.label}>Endereço</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Endereço"
+              placeholderTextColor="#A0A0A0"
+              value={formPar.endereco ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, endereco: t }))}
+            />
+            
+            <Text style={styles.label}>Tipo de Pessoa</Text>
+            <Picker
+              selectedValue={formPar.tipo_pessoa ?? 'pf'}
+              onValueChange={(v) => setFormPar((s) => ({ ...s, tipo_pessoa: v as TipoPessoa }))}
+              style={styles.picker}
+            >
+              {TIPO_PESSOA_OPTIONS.map((t) => (
+                <Picker.Item key={t} label={t.toUpperCase()} value={t} />
+              ))}
+            </Picker>
+
+            <Text style={styles.label}>{formPar.tipo_pessoa === 'pf' ? 'CPF' : 'CNPJ'}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={formPar.tipo_pessoa === 'pf' ? 'CPF' : 'CNPJ'}
+              placeholderTextColor="#A0A0A0"
+              keyboardType="numeric"
+              value={formPar.cpf_cnpj ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, cpf_cnpj: t }))}
+            />
+
+            <Text style={styles.label}>Tipo de Doador</Text>
+            <Picker
+              selectedValue={formPar.tipo_doador ?? 'unico'}
+              onValueChange={(v) => setFormPar((s) => ({ ...s, tipo_doador: v as TipoDoador }))}
+              style={styles.picker}
+            >
+              {TIPO_DOADOR_OPTIONS.map((t) => (
+                <Picker.Item key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} value={t} />
+              ))}
+            </Picker>
+
+            <Text style={styles.label}>Termo Assinado</Text>
+            <View style={styles.switchRow}>
+              <Text style={{ color: '#fff' }}>{formPar.termo_assinado ? 'Sim' : 'Não'}</Text>
+              <Switch
+                value={formPar.termo_assinado ?? false}
+                onValueChange={(v) => setFormPar((s) => ({ ...s, termo_assinado: v }))}
+              />
+            </View>
+
+            <Text style={styles.label}>Status</Text>
+            <Picker
+              selectedValue={formPar.status ?? 'ativo'}
+              onValueChange={(v) => setFormPar((s) => ({ ...s, status: v as StatusParceiro }))}
+              style={styles.picker}
+            >
+              {STATUS_PARCEIRO_OPTIONS.map((s) => (
+                <Picker.Item key={s} label={s.charAt(0).toUpperCase() + s.slice(1)} value={s} />
+              ))}
+            </Picker>
+
+            <Text style={styles.label}>Observação</Text>
+            <TextInput
+              style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+              multiline
+              numberOfLines={4}
+              placeholder="Observações"
+              placeholderTextColor="#A0A0A0"
+              value={formPar.observacao ?? ''}
+              onChangeText={(t) => setFormPar((s) => ({ ...s, observacao: t }))}
+            />
+
+            {editPar && (
+              <Text style={styles.labelInfo}>
+                Apoiador desde: {formatLocalForInput(editPar.created_at)}
+              </Text>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={saveParceiro}
+                disabled={savingPar}
+              >
+                {savingPar ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalPar(false)}>
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
   {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
   <Modal
     visible={isDeleteModalVisible}
@@ -1158,8 +1506,8 @@ export default function AdminScreen() {
         <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
         {itemToDelete && (
           <Text style={styles.modalText}>
-            Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : 'voluntário'}{' '}
-            <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome}</Text>?
+            Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : (deleteEntityType === 'voluntario' ? 'Colaborador' : 'parceiro')}{' '}
+            <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome || itemToDelete.full_name}</Text>?
             Essa ação não pode ser desfeita.
           </Text>
         )}
@@ -1318,5 +1666,22 @@ const styles = StyleSheet.create({
     width: 220,        // 200–240 é um bom range
     flexGrow: 0,
     flexShrink: 0,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 50,
+    backgroundColor: '#203A4A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#4A6572',
+    marginBottom: 10
+  },
+  labelInfo: {
+    fontSize: 14,
+    color: '#B0B0B0',
+    marginBottom: 10,
   },
 });
