@@ -1,12 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   SafeAreaView, ScrollView, Text, View,
-  Pressable, StyleSheet
+  Pressable, StyleSheet, Platform, ToastAndroid
 } from 'react-native';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 
 export default function ApoioScreen() {
+  const cnpj = '20.921.598/0001-69';
+  const [copied, setCopied] = useState(false);
+
+  async function copyCnpj() {
+    await Clipboard.setStringAsync(cnpj);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Chave PIX copiada com sucesso', ToastAndroid.SHORT);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
@@ -34,8 +46,13 @@ export default function ApoioScreen() {
         </View>
 
         <Text style={styles.cnpjText}>CNPJ para apoio:</Text>
-        <Text style={styles.cnpjNumber}>XX.XXX.XXX/0001-XX</Text>
-
+        <View style={styles.cnpjRow}>
+          <Text style={styles.cnpjNumber}>{cnpj}</Text>
+          <Pressable onPress={copyCnpj} style={styles.copyButton}>
+            <Feather name="copy" size={18} color="#0A1931" />
+          </Pressable>
+        </View>
+        {copied && <Text style={styles.copiedText}>Chave PIX copiada com sucesso</Text>}
       </ScrollView>
     </SafeAreaView>
   );
@@ -96,5 +113,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginTop: 8,
+  },
+  cnpjRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  copyButton: {
+    marginLeft: 12,
+    backgroundColor: '#FFF',
+    padding: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  copiedText: {
+    marginLeft: 10,
+    color: '#AEEA00',
+    fontWeight: '600',
   }
 });
