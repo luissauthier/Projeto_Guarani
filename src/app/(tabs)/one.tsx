@@ -1484,7 +1484,39 @@ export default function TreinosScreen() {
                 />
 
                 <View style={[styles.box, { flex: 1 }]}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Selecionar jogadores (ativos)</Text>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>
+                    Selecionar jogadores (ativos)
+                  </Text>
+
+                  {/* Filtro por categoria (ano) */}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Ano de (ex: 2008)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={yearFrom}
+                      onChangeText={handleYearFrom}
+                    />
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Ano até (ex: 2012)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={yearTo}
+                      onChangeText={handleYearTo}
+                    />
+                  </View>
+
+                  {/* Busca por nome/ano */}
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Pesquisar nome/ano"
+                    placeholderTextColor="#A0A0A0"
+                    value={searchJog}
+                    onChangeText={setSearchJog}
+                  />
+
                   <FlatList
                     style={{ flex: 1 }}
                     contentContainerStyle={{ paddingBottom: 4 }}
@@ -1500,6 +1532,7 @@ export default function TreinosScreen() {
                         <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
                       </View>
                     )}
+                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
                   />
                 </View>
               </>
