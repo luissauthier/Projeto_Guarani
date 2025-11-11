@@ -202,6 +202,27 @@ const formatPgDateOnly = (s?: string | null) => {
   return `${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`;
 };
 
+const SwitchField = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: boolean | null;
+  onChange: (next: boolean) => void;
+}) => {
+  const v = !!value;
+  return (
+    <>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.switchRow}>
+        <Text style={{ color: '#fff' }}>{v ? 'Sim' : 'Não'}</Text>
+        <Switch value={v} onValueChange={onChange} />
+      </View>
+    </>
+  );
+};
+
 /* ============== Componente ============== */
 export default function AdminScreen() {
   // ► agora também uso role/user/refreshProfile para debug
@@ -1225,25 +1246,17 @@ function formatLocalForInput(iso: string) {
         />
 
         {/* === NOVOS CAMPOS === */}
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-          <Text style={{ color:'#E0E0E0' }}>Jogador Guarani</Text>
-          <TouchableOpacity
-            onPress={() => setFormJog(s => ({ ...s, is_jogador_guarani: !(s.is_jogador_guarani ?? false) }))}
-            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
-          >
-            <Text style={styles.btnText}>{formJog.is_jogador_guarani ? 'Sim' : 'Não'}</Text>
-          </TouchableOpacity>
-        </View>
+        <SwitchField
+          label="Jogador Guarani"
+          value={formJog.is_jogador_guarani}
+          onChange={(v) => setFormJog(s => ({ ...s, is_jogador_guarani: v }))}
+        />
 
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-          <Text style={{ color:'#E0E0E0' }}>Termo entregue</Text>
-          <TouchableOpacity
-            onPress={() => setFormJog(s => ({ ...s, termo_entregue: !(s.termo_entregue ?? false) }))}
-            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
-          >
-            <Text style={styles.btnText}>{formJog.termo_entregue ? 'Sim' : 'Não'}</Text>
-          </TouchableOpacity>
-        </View>
+        <SwitchField
+          label="Termo entregue"
+          value={formJog.termo_entregue}
+          onChange={(v) => setFormJog(s => ({ ...s, termo_entregue: v }))}
+        />
 
         <TextInput
           style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
@@ -1441,14 +1454,11 @@ function formatLocalForInput(iso: string) {
               ))}
             </Picker>
 
-            <Text style={styles.label}>Termo Assinado</Text>
-            <View style={styles.switchRow}>
-              <Text style={{ color: '#fff' }}>{formPar.termo_assinado ? 'Sim' : 'Não'}</Text>
-              <Switch
-                value={formPar.termo_assinado ?? false}
-                onValueChange={(v) => setFormPar((s) => ({ ...s, termo_assinado: v }))}
-              />
-            </View>
+            <SwitchField
+              label="Termo Assinado"
+              value={formPar.termo_assinado}
+              onChange={(v) => setFormPar(s => ({ ...s, termo_assinado: v }))}
+            />
 
             <Text style={styles.label}>Status</Text>
             <Picker
