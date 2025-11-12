@@ -41,6 +41,12 @@ export default function Signup() {
     return dob.getFullYear(); // mesma regra do banco
   }, [dataNascimento]);
 
+  // ===== foco/scroll/erro do RESPONSÁVEL (pré-inscrição) =====
+  const scrollRef = React.useRef<ScrollView>(null);
+  const responsavelRef = React.useRef<TextInput>(null);
+  const [respY, setRespY] = React.useState(0);
+  const [errors, setErrors] = React.useState<{ responsavel?: string }>({});
+
   const responsavelObrigatorio = idade !== null && idade < 18;
 
   async function handleSignOut() {
@@ -55,7 +61,14 @@ export default function Signup() {
     if (isNaN(dob.getTime())) return Alert.alert('Atenção', 'Data de nascimento inválida.');
     if (!telefone.trim()) return Alert.alert('Atenção', 'Informe um número de telefone para contato.');
     if (responsavelObrigatorio && !responsavel.trim()) {
-      return Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18 anos.');
+      setErrors((e) => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
+      requestAnimationFrame(() => {
+        responsavelRef.current?.focus();
+        scrollRef.current?.scrollTo({ y: Math.max(respY - 16, 0), animated: true });
+      });
+      Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18 anos.');
+      setSaving(false);
+      return;
     }
 
     setSaving(true);
@@ -88,7 +101,7 @@ export default function Signup() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16 }}>
         <TouchableOpacity onPress={handleSignOut} style={{ alignSelf: 'flex-end', padding: 8 }}>
           <Feather name="home" size={24} color="#00C2CB" />
         </TouchableOpacity>
@@ -151,8 +164,26 @@ export default function Signup() {
         <TextInput placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
           value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
 
-        <TextInput placeholder="Nome do responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
-          value={responsavel} onChangeText={setResponsavel} style={styles.input} />
+        <TextInput
+          ref={responsavelRef}
+          onLayout={(e) => setRespY(e.nativeEvent.layout.y)}
+          style={[
+            styles.input,
+            errors.responsavel && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+          ]}
+          placeholder="Nome do responsável (se menor de 18)"
+          placeholderTextColor="#A0A0A0"
+          value={responsavel}
+          onChangeText={(t) => {
+            setResponsavel(t);
+            if (errors.responsavel) setErrors((e) => ({ ...e, responsavel: undefined }));
+          }}
+        />
+        {!!errors.responsavel && (
+          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+            {errors.responsavel}
+          </Text>
+        )}
 
         <Pressable
           style={[styles.submitButton, saving && { opacity: 0.7 }]}

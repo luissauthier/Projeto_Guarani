@@ -523,6 +523,13 @@ function formatLocalForInput(iso: string) {
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
 
+  // ===== Jogador: foco/scroll/erro do RESPONSÁVEL =====
+  const jogScrollRef = React.useRef<ScrollView>(null);
+  const responsavelRef = React.useRef<TextInput>(null);
+  const [jogRespY, setJogRespY] = React.useState<number>(0);
+  const [jogErrors, setJogErrors] = React.useState<{ responsavel?: string }>({});
+
+
   // === Feedback abaixo do nascimento (igual ao Signup) ===
   const idade = useMemo(() => {
     const s = formJog.data_nascimento;
@@ -565,6 +572,21 @@ function formatLocalForInput(iso: string) {
   async function saveJogador() {
     if (!formJog?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome.');
     if (!formJog?.telefone?.trim()) return Alert.alert('Atenção', 'Informe o telefone.');
+    // responsável obrigatório para menor de 18
+    if (responsavelObrigatorio && !formJog?.responsavel_nome?.trim()) {
+      setSavingJog(false);
+      setJogErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
+      requestAnimationFrame(() => {
+        responsavelRef.current?.focus();
+        jogScrollRef.current?.scrollTo({ y: Math.max(jogRespY - 16, 0), animated: true });
+      });
+      if (Platform.OS === 'web') {
+        setDebugMsg('Atenção: Responsável é obrigatório para menores de 18 anos.');
+      } else {
+        Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18 anos.');
+      }
+      return;
+    }
     try {
       setSavingJog(true);
 
@@ -1267,7 +1289,7 @@ function formatLocalForInput(iso: string) {
   {/* MODAL JOGADOR */}
   <Modal visible={modalJog} animationType="slide" onRequestClose={() => setModalJog(false)}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView ref={jogScrollRef} contentContainerStyle={{ padding: 16 }}>
         <Text style={styles.h1}>{editJog ? 'Editar Jogador' : 'Cadastrar Jogador'}</Text>
 
         <TextInput
@@ -1339,12 +1361,20 @@ function formatLocalForInput(iso: string) {
           keyboardType="email-address"
         />
         <TextInput
-          style={styles.input}
+          ref={responsavelRef}
+          onLayout={(e) => setJogRespY(e.nativeEvent.layout.y)}
+          style={[styles.input, jogErrors.responsavel && styles.inputError]}
           placeholder="Responsável (se menor de 18)"
           placeholderTextColor="#A0A0A0"
           value={formJog.responsavel_nome ?? ''}
-          onChangeText={(t) => setFormJog((s) => ({ ...s, responsavel_nome: t }))}
+          onChangeText={(t) => {
+            setFormJog((s) => ({ ...s, responsavel_nome: t }));
+            if (jogErrors.responsavel) setJogErrors((e) => ({ ...e, responsavel: undefined }));
+          }}
         />
+        {!!jogErrors.responsavel && (
+          <Text style={styles.inputErrorText}>{jogErrors.responsavel}</Text>
+        )}
 
         {/* === NOVOS CAMPOS === */}
         <SwitchField
