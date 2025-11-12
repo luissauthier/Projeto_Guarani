@@ -610,12 +610,21 @@ function formatLocalForInput(iso: string) {
     } finally {
       setSavingJog(false);
     }
-  }
+  }  
+
+  // Data "Apoiador desde" (usa o mesmo padrão do Jogador)
+  const [parSince, setParSince] = useState<string>(todayYmd());
+
+  const createdAtIso = new Date(parSince + 'T00:00:00').toISOString();
 
   function openEditPar(p?: Parceiro) {
     if (p) {
       setEditPar(p);
       setFormPar(p);
+      // pega YYYY-MM-DD da coluna created_at (ou mantém hoje se não vier)
+      const iso = p.created_at ?? '';
+      const ymd = iso ? iso.slice(0, 10) : todayYmd();
+      setParSince(ymd);
     } else {
       setEditPar(null);
       setFormPar({
@@ -624,6 +633,7 @@ function formatLocalForInput(iso: string) {
         tipo_doador: 'unico',
         termo_assinado: false,
       });
+      setParSince(todayYmd()); // default = hoje
     }
     setModalPar(true);
   }
@@ -707,10 +717,17 @@ function formatLocalForInput(iso: string) {
 
       let err;
       if (editPar) {
-        const { error } = await supabase.from('parceiros').update(payload).eq('id', editPar.id);
+        // UPDATE
+        const { error } = await supabase
+          .from('parceiros')
+          .update({ ...payload, created_at: createdAtIso }) // <- atualiza "Apoiador desde"
+          .eq('id', editPar.id);
         err = error;
       } else {
-        const { error } = await supabase.from('parceiros').insert(payload as any);
+        // INSERT
+        const { error } = await supabase
+          .from('parceiros')
+          .insert({ ...payload, created_at: createdAtIso } as any); // <- define no create
         err = error;
       }
 
@@ -1577,10 +1594,37 @@ function formatLocalForInput(iso: string) {
               onChangeText={(t) => setFormPar((s) => ({ ...s, observacao: t }))}
             />
 
-            {editPar && (
-              <Text style={styles.labelInfo}>
-                Apoiador desde: {formatLocalForInput(editPar.created_at)}
-              </Text>
+            <Text style={styles.label}>Apoiador desde</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={parSince}
+                onChange={(e) => setParSince(e.currentTarget.value)} // YYYY-MM-DD
+                style={{
+                  padding: 10,
+                  border: '1px solid #4A6572',
+                  backgroundColor: '#203A4A',
+                  color: '#FFF',
+                  borderRadius: 10,
+                  height: 50,
+                  marginBottom: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              <DateTimePicker
+                mode="date"
+                value={new Date(parSince + 'T00:00:00')}
+                onChange={(_, d) => {
+                  if (d) {
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                    setParSince(v);
+                  }
+                }}
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              />
             )}
 
             {/* dentro do conteúdo do Modal de Parceiro, logo após o título */}
