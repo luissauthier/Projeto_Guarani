@@ -12,6 +12,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+
 
 /* ================= Helpers (fora do componente, não usam hooks) ================= */
 
@@ -1277,7 +1279,7 @@ export default function TreinosScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AppSafeArea style={styles.container}>
       {/* <View style={styles.header}>
         <Text style={styles.logo}>Projeto Guarani</Text>
         <TouchableOpacity onPress={handleSignOut}><Feather name="log-out" size={24} color="#00C2CB" /></TouchableOpacity>
@@ -1389,7 +1391,7 @@ export default function TreinosScreen() {
       )}
       
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+        <AppSafeArea style={{ flex: 1, backgroundColor: '#0A1931' }}>
           {/* Conteúdo com padding e rodapé fora para fixar no fundo */}
           <View style={{ flex: 1, padding: 16 }}>
             <Text style={styles.h1}>
@@ -1556,7 +1558,7 @@ export default function TreinosScreen() {
               )}
             </View>
           </View>
-        </SafeAreaView>
+        </AppSafeArea >
       </Modal>
 
       <Modal
@@ -1594,7 +1596,7 @@ export default function TreinosScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </AppSafeArea>
   );
 }
 

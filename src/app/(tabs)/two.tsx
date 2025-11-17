@@ -15,6 +15,9 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+const ModalSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+
 /* ============== Helpers (fora do componente, não usam hooks) ============== */
 function debugSbError(ctx: string, error: any) {
   const msg = [
@@ -957,7 +960,7 @@ function formatLocalForInput(iso: string) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AppSafeArea style={styles.container}>
       {/* <View style={styles.header}>
         <Text style={styles.logo}>Projeto Guarani</Text>
         <TouchableOpacity onPress={handleSignOut}>
@@ -1711,7 +1714,7 @@ function formatLocalForInput(iso: string) {
       </View>
     </View>
   </Modal>
-    </SafeAreaView>
+    </AppSafeArea>
   );
 }
 
