@@ -26,6 +26,12 @@ export default function Login() {
     setLoading(true);
     setNotification(null); // Limpa notificações antigas
 
+    if (!email.trim() || !password.trim()) {
+      setNotification('E-mail ou senha inválidos.');
+      setLoading(false);
+      return; // Interrompe a função aqui
+    }
+
     try {
       // 1. Tenta fazer o login
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });

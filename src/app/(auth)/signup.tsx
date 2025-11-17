@@ -4,10 +4,12 @@ import {
   Pressable, ActivityIndicator, Platform,
   View
 } from 'react-native';
+import { TextInputMask } from "react-native-masked-text"; // <-- NOME CORRIGIDO
 import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
 
 function todayYmd() {
   const d = new Date();
@@ -20,6 +22,7 @@ export default function Signup() {
   const [dataNascimento, setDataNascimento] = useState(todayYmd()); // yyyy-mm-dd
   const [responsavel, setResponsavel] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [telefoneMasked, setTelefoneMasked] = useState('');
   const [email, setEmail] = useState('');
 
   const [saving, setSaving] = useState(false);
@@ -273,24 +276,28 @@ export default function Signup() {
           </Text>
         )}
 
-        <TextInput
-          ref={telRef}
-          onLayout={(e) => setTelY(e.nativeEvent.layout.y)}
-          style={[
-            styles.input,
-            errors.telefone && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
-          ]}
-          placeholder="Telefone para contato"
+        <TextInputMask
+          type={'cel-phone'}
+          options={{
+            maskType: 'BRL', // Formato Brasileiro
+            withDDD: true,
+            dddMask: '(99) ', // Como o DDD deve aparecer
+          }}
+          style={styles.input}
+          placeholder="Telefone do Responsável (com DDD)"
           placeholderTextColor="#A0A0A0"
-          value={telefone}
-          onChangeText={(t) => { setTelefone(t); if (errors.telefone) setErrors(s => ({ ...s, telefone: undefined })); }}
-          keyboardType="phone-pad"
+          keyboardType="phone-pad"          
+          // No Web, usa o estado mascarado. No Mobile, usa o estado puro.
+          value={Platform.OS === 'web' ? telefoneMasked : telefone}
+          
+          onChangeText={(maskedText, rawText) => {
+            // Salva o valor PURO no estado 'telefone' (para o Supabase)
+            setTelefone(rawText ?? '');
+            
+            // Salva o valor MASCARADO no estado 'telefoneMasked' (para o 'value' do Web)
+            setTelefoneMasked(maskedText ?? '');
+          }}
         />
-        {!!errors.telefone && (
-          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
-            {errors.telefone}
-          </Text>
-        )}
 
         <TextInput placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
           value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />

@@ -23,6 +23,7 @@
     "@supabase/supabase-js": "^2.50.0",
     "docx": "^9.5.1",
     "expo": "^53.0.12",
+    "expo-clipboard": "~7.1.5",
     "expo-file-system": "~18.1.10",
     "expo-font": "~13.3.1",
     "expo-image-picker": "~16.1.4",
@@ -41,6 +42,7 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.4",
+    "react-native-masked-text": "^1.13.0",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
@@ -49,8 +51,7 @@
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
     "undefined": "react-navigation/native",
-    "uuid": "^11.1.0",
-    "expo-clipboard": "~7.1.5"
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
