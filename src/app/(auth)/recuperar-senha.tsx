@@ -22,6 +22,7 @@ export default function RecuperarSenhaScreen() {
     try {
       // Esta é a função do Supabase
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'projetoguarani://nova-senha',
         // Opcional: Redireciona o usuário de volta para o app após redefinir
         // redirectTo: 'exp://... seu-link-de-app' 
       });
