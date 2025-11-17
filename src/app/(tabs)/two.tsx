@@ -15,6 +15,9 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+const ModalSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+
 /* ============== Helpers (fora do componente, não usam hooks) ============== */
 function debugSbError(ctx: string, error: any) {
   const msg = [
@@ -127,6 +130,51 @@ async function debugLogSession() {
   }
 }
 
+// Mantém só dígitos
+function onlyDigits(v: string) { return (v || '').replace(/\D/g, ''); }
+
+// Formata CPF: 000.000.000-00
+function formatCpf(v: string) {
+  const d = onlyDigits(v).slice(0, 11);
+  const p1 = d.slice(0, 3);
+  const p2 = d.slice(3, 6);
+  const p3 = d.slice(6, 9);
+  const p4 = d.slice(9, 11);
+  if (d.length <= 3) return p1;
+  if (d.length <= 6) return `${p1}.${p2}`;
+  if (d.length <= 9) return `${p1}.${p2}.${p3}`;
+  return `${p1}.${p2}.${p3}-${p4}`;
+}
+
+// Formata CNPJ: 00.000.000/0000-00
+function formatCnpj(v: string) {
+  const d = onlyDigits(v).slice(0, 14);
+  const p1 = d.slice(0, 2);
+  const p2 = d.slice(2, 5);
+  const p3 = d.slice(5, 8);
+  const p4 = d.slice(8, 12);
+  const p5 = d.slice(12, 14);
+  if (d.length <= 2) return p1;
+  if (d.length <= 5) return `${p1}.${p2}`;
+  if (d.length <= 8) return `${p1}.${p2}.${p3}`;
+  if (d.length <= 12) return `${p1}.${p2}.${p3}/${p4}`;
+  return `${p1}.${p2}.${p3}/${p4}-${p5}`;
+}
+
+// Decide formatação com base no tipo
+function formatCpfCnpj(v: string, tipo: 'pf' | 'pj') {
+  return tipo === 'pf' ? formatCpf(v) : formatCnpj(v);
+}
+
+// Limita o valor bruto conforme o tipo
+function clampCpfCnpjDigits(v: string, tipo: 'pf' | 'pj') {
+  const d = onlyDigits(v);
+  return d.slice(0, tipo === 'pf' ? 11 : 14);
+}
+
+function isCpfLenOk(digits?: string | null) { return !!digits && digits.length === 11; }
+function isCnpjLenOk(digits?: string | null) { return !!digits && digits.length === 14; }
+
 /* ============== Tipos ============== */
 type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
 type TipoVol = 'viewer' | 'coach' | 'admin';
@@ -200,6 +248,27 @@ const formatPgDateOnly = (s?: string | null) => {
   const [y, m, d] = s.split('-');
   if (!y || !m || !d) return s;
   return `${d.padStart(2,'0')}/${m.padStart(2,'0')}/${y}`;
+};
+
+const SwitchField = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: boolean | null;
+  onChange: (next: boolean) => void;
+}) => {
+  const v = !!value;
+  return (
+    <>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.switchRow}>
+        <Text style={{ color: '#fff' }}>{v ? 'Sim' : 'Não'}</Text>
+        <Switch value={v} onValueChange={onChange} />
+      </View>
+    </>
+  );
 };
 
 /* ============== Componente ============== */
@@ -297,6 +366,15 @@ function formatLocalForInput(iso: string) {
     jogadores.forEach(j => { if (j.categoria) anos.add(j.categoria); });
     return Array.from(anos).sort((a,b)=>b-a);
   }, [jogadores]);
+
+  const notify = React.useCallback((title: string, msg: string) => {
+    if (Platform.OS === 'web') {
+      // Usa seu banner amarelo de debug
+      setDebugMsg(`${title}: ${msg}`);
+    } else {
+      Alert.alert(title, msg);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -448,6 +526,13 @@ function formatLocalForInput(iso: string) {
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
 
+  // ===== Jogador: foco/scroll/erro do RESPONSÁVEL =====
+  const jogScrollRef = React.useRef<ScrollView>(null);
+  const responsavelRef = React.useRef<TextInput>(null);
+  const [jogRespY, setJogRespY] = React.useState<number>(0);
+  const [jogErrors, setJogErrors] = React.useState<{ responsavel?: string }>({});
+
+
   // === Feedback abaixo do nascimento (igual ao Signup) ===
   const idade = useMemo(() => {
     const s = formJog.data_nascimento;
@@ -490,6 +575,21 @@ function formatLocalForInput(iso: string) {
   async function saveJogador() {
     if (!formJog?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome.');
     if (!formJog?.telefone?.trim()) return Alert.alert('Atenção', 'Informe o telefone.');
+    // responsável obrigatório para menor de 18
+    if (responsavelObrigatorio && !formJog?.responsavel_nome?.trim()) {
+      setSavingJog(false);
+      setJogErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
+      requestAnimationFrame(() => {
+        responsavelRef.current?.focus();
+        jogScrollRef.current?.scrollTo({ y: Math.max(jogRespY - 16, 0), animated: true });
+      });
+      if (Platform.OS === 'web') {
+        setDebugMsg('Atenção: Responsável é obrigatório para menores de 18 anos.');
+      } else {
+        Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18 anos.');
+      }
+      return;
+    }
     try {
       setSavingJog(true);
 
@@ -535,12 +635,21 @@ function formatLocalForInput(iso: string) {
     } finally {
       setSavingJog(false);
     }
-  }
+  }  
+
+  // Data "Apoiador desde" (usa o mesmo padrão do Jogador)
+  const [parSince, setParSince] = useState<string>(todayYmd());
+
+  const createdAtIso = new Date(parSince + 'T00:00:00').toISOString();
 
   function openEditPar(p?: Parceiro) {
     if (p) {
       setEditPar(p);
       setFormPar(p);
+      // pega YYYY-MM-DD da coluna created_at (ou mantém hoje se não vier)
+      const iso = p.created_at ?? '';
+      const ymd = iso ? iso.slice(0, 10) : todayYmd();
+      setParSince(ymd);
     } else {
       setEditPar(null);
       setFormPar({
@@ -549,9 +658,16 @@ function formatLocalForInput(iso: string) {
         tipo_doador: 'unico',
         termo_assinado: false,
       });
+      setParSince(todayYmd()); // default = hoje
     }
     setModalPar(true);
   }
+
+  // ===== Parceiro: foco/scroll/erro do CPF/CNPJ =====
+  const parScrollRef = React.useRef<ScrollView>(null);
+  const cpfCnpjRef = React.useRef<TextInput>(null);
+  const [parFieldY, setParFieldY] = React.useState<number>(0);
+  const [parErrors, setParErrors] = React.useState<{ cpf_cnpj?: string }>({});
 
   // ====== MODAL DE EXCLUSÃO (Genérico) ======
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -580,10 +696,36 @@ function formatLocalForInput(iso: string) {
   }
 
   async function saveParceiro() {
-    if (!formPar?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome do parceiro.');
-    
+    if (!formPar?.nome?.trim()) {
+      notify('Atenção', 'Informe o nome do parceiro.');
+      return;
+    }
+
     try {
       setSavingPar(true);
+
+      const tipo = formPar.tipo_pessoa ?? 'pf';
+      if (tipo === 'pf' && formPar.cpf_cnpj && !isCpfLenOk(formPar.cpf_cnpj)) {
+        setSavingPar(false);
+        setParErrors(e => ({ ...e, cpf_cnpj: 'CPF inválido. Confira os 11 dígitos.' }));
+        // foca e rola
+        requestAnimationFrame(() => {
+          cpfCnpjRef.current?.focus();
+          parScrollRef.current?.scrollTo({ y: Math.max(parFieldY - 16, 0), animated: true });
+        });
+        notify('Atenção', 'CPF inválido. Confira os 11 dígitos.');
+        return;
+      }
+      if (tipo === 'pj' && formPar.cpf_cnpj && !isCnpjLenOk(formPar.cpf_cnpj)) {
+        setSavingPar(false);
+        setParErrors(e => ({ ...e, cpf_cnpj: 'CNPJ inválido. Confira os 14 dígitos.' }));
+        requestAnimationFrame(() => {
+          cpfCnpjRef.current?.focus();
+          parScrollRef.current?.scrollTo({ y: Math.max(parFieldY - 16, 0), animated: true });
+        });
+        notify('Atenção', 'CNPJ inválido. Confira os 14 dígitos.');
+        return;
+      }
 
       const payload: Omit<Parceiro, 'id' | 'created_at'> = {
         nome: formPar.nome!,
@@ -601,23 +743,28 @@ function formatLocalForInput(iso: string) {
       let err;
       if (editPar) {
         // UPDATE
-        const { error } = await supabase.from('parceiros').update(payload).eq('id', editPar.id);
+        const { error } = await supabase
+          .from('parceiros')
+          .update({ ...payload, created_at: createdAtIso }) // <- atualiza "Apoiador desde"
+          .eq('id', editPar.id);
         err = error;
       } else {
         // INSERT
-        const { error } = await supabase.from('parceiros').insert(payload as any);
+        const { error } = await supabase
+          .from('parceiros')
+          .insert({ ...payload, created_at: createdAtIso } as any); // <- define no create
         err = error;
       }
 
       if (err) throw err;
+
       setModalPar(false);
       await load();
       setDebugMsg('✅ Dados do parceiro salvos.');
-
     } catch (e: any) {
       console.log('[saveParceiro] erro:', e);
       const errorMsg = debugSbError('salvar parceiro', e);
-      Alert.alert('Erro ao Salvar Parceiro', errorMsg);
+      notify('Erro ao Salvar Parceiro', errorMsg);
     } finally {
       setSavingPar(false);
     }
@@ -813,7 +960,7 @@ function formatLocalForInput(iso: string) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AppSafeArea style={styles.container}>
       {/* <View style={styles.header}>
         <Text style={styles.logo}>Projeto Guarani</Text>
         <TouchableOpacity onPress={handleSignOut}>
@@ -1145,7 +1292,7 @@ function formatLocalForInput(iso: string) {
   {/* MODAL JOGADOR */}
   <Modal visible={modalJog} animationType="slide" onRequestClose={() => setModalJog(false)}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView ref={jogScrollRef} contentContainerStyle={{ padding: 16 }}>
         <Text style={styles.h1}>{editJog ? 'Editar Jogador' : 'Cadastrar Jogador'}</Text>
 
         <TextInput
@@ -1217,33 +1364,33 @@ function formatLocalForInput(iso: string) {
           keyboardType="email-address"
         />
         <TextInput
-          style={styles.input}
+          ref={responsavelRef}
+          onLayout={(e) => setJogRespY(e.nativeEvent.layout.y)}
+          style={[styles.input, jogErrors.responsavel && styles.inputError]}
           placeholder="Responsável (se menor de 18)"
           placeholderTextColor="#A0A0A0"
           value={formJog.responsavel_nome ?? ''}
-          onChangeText={(t) => setFormJog((s) => ({ ...s, responsavel_nome: t }))}
+          onChangeText={(t) => {
+            setFormJog((s) => ({ ...s, responsavel_nome: t }));
+            if (jogErrors.responsavel) setJogErrors((e) => ({ ...e, responsavel: undefined }));
+          }}
         />
+        {!!jogErrors.responsavel && (
+          <Text style={styles.inputErrorText}>{jogErrors.responsavel}</Text>
+        )}
 
         {/* === NOVOS CAMPOS === */}
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-          <Text style={{ color:'#E0E0E0' }}>Jogador Guarani</Text>
-          <TouchableOpacity
-            onPress={() => setFormJog(s => ({ ...s, is_jogador_guarani: !(s.is_jogador_guarani ?? false) }))}
-            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
-          >
-            <Text style={styles.btnText}>{formJog.is_jogador_guarani ? 'Sim' : 'Não'}</Text>
-          </TouchableOpacity>
-        </View>
+        <SwitchField
+          label="Jogador Guarani"
+          value={formJog.is_jogador_guarani}
+          onChange={(v) => setFormJog(s => ({ ...s, is_jogador_guarani: v }))}
+        />
 
-        <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
-          <Text style={{ color:'#E0E0E0' }}>Termo entregue</Text>
-          <TouchableOpacity
-            onPress={() => setFormJog(s => ({ ...s, termo_entregue: !(s.termo_entregue ?? false) }))}
-            style={[styles.btnNeutral, { paddingVertical:6, paddingHorizontal:10 }]}
-          >
-            <Text style={styles.btnText}>{formJog.termo_entregue ? 'Sim' : 'Não'}</Text>
-          </TouchableOpacity>
-        </View>
+        <SwitchField
+          label="Termo entregue"
+          value={formJog.termo_entregue}
+          onChange={(v) => setFormJog(s => ({ ...s, termo_entregue: v }))}
+        />
 
         <TextInput
           style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
@@ -1367,7 +1514,7 @@ function formatLocalForInput(iso: string) {
 
   <Modal visible={modalPar} onRequestClose={() => setModalPar(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <ScrollView ref={parScrollRef} contentContainerStyle={{ padding: 16 }}>
             <Text style={styles.h1}>{editPar ? 'Editar Parceiro' : 'Cadastrar Parceiro'}</Text>
 
             <Text style={styles.label}>Nome</Text>
@@ -1422,13 +1569,24 @@ function formatLocalForInput(iso: string) {
 
             <Text style={styles.label}>{formPar.tipo_pessoa === 'pf' ? 'CPF' : 'CNPJ'}</Text>
             <TextInput
-              style={styles.input}
-              placeholder={formPar.tipo_pessoa === 'pf' ? 'CPF' : 'CNPJ'}
+              ref={cpfCnpjRef}
+              onLayout={(e) => setParFieldY(e.nativeEvent.layout.y)} // salva a posição Y do campo
+              style={[styles.input, parErrors.cpf_cnpj && styles.inputError]} // destaca em erro
+              placeholder={formPar.tipo_pessoa === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
               placeholderTextColor="#A0A0A0"
               keyboardType="numeric"
-              value={formPar.cpf_cnpj ?? ''}
-              onChangeText={(t) => setFormPar((s) => ({ ...s, cpf_cnpj: t }))}
+              value={formatCpfCnpj(formPar.cpf_cnpj ?? '', formPar.tipo_pessoa ?? 'pf')}
+              onChangeText={(t) => {
+                const tipo = formPar.tipo_pessoa ?? 'pf';
+                const digits = clampCpfCnpjDigits(t, tipo);
+                setFormPar(s => ({ ...s, cpf_cnpj: digits }));
+                // limpa erro ao digitar
+                if (parErrors.cpf_cnpj) setParErrors((e) => ({ ...e, cpf_cnpj: undefined }));
+              }}
             />
+            {!!parErrors.cpf_cnpj && (
+              <Text style={styles.inputErrorText}>{parErrors.cpf_cnpj}</Text>
+            )}
 
             <Text style={styles.label}>Tipo de Doador</Text>
             <Picker
@@ -1441,14 +1599,11 @@ function formatLocalForInput(iso: string) {
               ))}
             </Picker>
 
-            <Text style={styles.label}>Termo Assinado</Text>
-            <View style={styles.switchRow}>
-              <Text style={{ color: '#fff' }}>{formPar.termo_assinado ? 'Sim' : 'Não'}</Text>
-              <Switch
-                value={formPar.termo_assinado ?? false}
-                onValueChange={(v) => setFormPar((s) => ({ ...s, termo_assinado: v }))}
-              />
-            </View>
+            <SwitchField
+              label="Termo Assinado"
+              value={formPar.termo_assinado}
+              onChange={(v) => setFormPar(s => ({ ...s, termo_assinado: v }))}
+            />
 
             <Text style={styles.label}>Status</Text>
             <Picker
@@ -1472,12 +1627,49 @@ function formatLocalForInput(iso: string) {
               onChangeText={(t) => setFormPar((s) => ({ ...s, observacao: t }))}
             />
 
-            {editPar && (
-              <Text style={styles.labelInfo}>
-                Apoiador desde: {formatLocalForInput(editPar.created_at)}
-              </Text>
+            <Text style={styles.label}>Apoiador desde</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={parSince}
+                onChange={(e) => setParSince(e.currentTarget.value)} // YYYY-MM-DD
+                style={{
+                  padding: 10,
+                  border: '1px solid #4A6572',
+                  backgroundColor: '#203A4A',
+                  color: '#FFF',
+                  borderRadius: 10,
+                  height: 50,
+                  marginBottom: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              <DateTimePicker
+                mode="date"
+                value={new Date(parSince + 'T00:00:00')}
+                onChange={(_, d) => {
+                  if (d) {
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                    setParSince(v);
+                  }
+                }}
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              />
             )}
 
+            {/* dentro do conteúdo do Modal de Parceiro, logo após o título */}
+            {!!debugMsg && (
+              <View style={styles.debugBanner}>
+                <Text style={styles.debugBannerText}>{debugMsg}</Text>
+                <TouchableOpacity onPress={() => setDebugMsg(null)} hitSlop={{ top:10, bottom:10, left:10, right:10 }}>
+                  <Feather name="x" size={20} color="#000" />
+                </TouchableOpacity>
+              </View>
+            )}
+            
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
               <TouchableOpacity
                 style={[styles.btnPrimary, { flex: 1 }]}
@@ -1522,7 +1714,7 @@ function formatLocalForInput(iso: string) {
       </View>
     </View>
   </Modal>
-    </SafeAreaView>
+    </AppSafeArea>
   );
 }
 
@@ -1683,5 +1875,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#B0B0B0',
     marginBottom: 10,
+  },
+  inputError: {
+    borderColor: '#FF6B6B',
+    backgroundColor: '#2A1F1F',
+  },
+  inputErrorText: {
+    color: '#FF6B6B',
+    marginTop: -6,
+    marginBottom: 10,
+    fontSize: 12,
   },
 });

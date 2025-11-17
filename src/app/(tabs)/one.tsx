@@ -12,6 +12,8 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
+
 
 /* ================= Helpers (fora do componente, não usam hooks) ================= */
 
@@ -1277,7 +1279,7 @@ export default function TreinosScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AppSafeArea style={styles.container}>
       {/* <View style={styles.header}>
         <Text style={styles.logo}>Projeto Guarani</Text>
         <TouchableOpacity onPress={handleSignOut}><Feather name="log-out" size={24} color="#00C2CB" /></TouchableOpacity>
@@ -1389,7 +1391,7 @@ export default function TreinosScreen() {
       )}
       
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
+        <AppSafeArea style={{ flex: 1, backgroundColor: '#0A1931' }}>
           {/* Conteúdo com padding e rodapé fora para fixar no fundo */}
           <View style={{ flex: 1, padding: 16 }}>
             <Text style={styles.h1}>
@@ -1484,7 +1486,39 @@ export default function TreinosScreen() {
                 />
 
                 <View style={[styles.box, { flex: 1 }]}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>Selecionar jogadores (ativos)</Text>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>
+                    Selecionar jogadores (ativos)
+                  </Text>
+
+                  {/* Filtro por categoria (ano) */}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Ano de (ex: 2008)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={yearFrom}
+                      onChangeText={handleYearFrom}
+                    />
+                    <TextInput
+                      style={[styles.input, { flex: 1 }]}
+                      placeholder="Ano até (ex: 2012)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={yearTo}
+                      onChangeText={handleYearTo}
+                    />
+                  </View>
+
+                  {/* Busca por nome/ano */}
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Pesquisar nome/ano"
+                    placeholderTextColor="#A0A0A0"
+                    value={searchJog}
+                    onChangeText={setSearchJog}
+                  />
+
                   <FlatList
                     style={{ flex: 1 }}
                     contentContainerStyle={{ paddingBottom: 4 }}
@@ -1500,6 +1534,7 @@ export default function TreinosScreen() {
                         <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
                       </View>
                     )}
+                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
                   />
                 </View>
               </>
@@ -1523,7 +1558,7 @@ export default function TreinosScreen() {
               )}
             </View>
           </View>
-        </SafeAreaView>
+        </AppSafeArea >
       </Modal>
 
       <Modal
@@ -1561,7 +1596,7 @@ export default function TreinosScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </AppSafeArea>
   );
 }
 

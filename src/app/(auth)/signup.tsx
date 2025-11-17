@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Alert,
-  Pressable, ActivityIndicator, Platform
+  Pressable, ActivityIndicator, Platform,
+  View
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -41,6 +42,47 @@ export default function Signup() {
     return dob.getFullYear(); // mesma regra do banco
   }, [dataNascimento]);
 
+  // refs + posições Y para focar/rolar até o campo com erro
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  const nomeRef = React.useRef<TextInput>(null);
+  const telRef = React.useRef<TextInput>(null);
+  const responsavelRef = React.useRef<TextInput>(null);
+
+  const [nomeY, setNomeY] = React.useState(0);
+  const [telY, setTelY] = React.useState(0);
+  const [respY, setRespY] = React.useState(0);
+  const [dateY, setDateY] = React.useState(0); // usamos uma View ao redor do date p/ medir
+
+  // em cima do componente ou no mesmo arquivo
+  type AnyFocusable = { focus?: () => void } | null | undefined;
+  type AnyRef = React.RefObject<AnyFocusable> | null | undefined;
+
+  function focusAndScroll(ref?: AnyRef, y?: number) {
+    requestAnimationFrame(() => {
+      // tenta focar se existir e tiver método focus
+      if (ref?.current && typeof ref.current.focus === 'function') {
+        ref.current.focus();
+      }
+      // rola se recebeu Y
+      if (typeof y === 'number') {
+        scrollRef.current?.scrollTo({ y: Math.max(y - 16, 0), animated: true });
+      }
+    });
+  }
+
+  // erros por campo
+  const [errors, setErrors] = React.useState<{
+    nome?: string;
+    data_nascimento?: string;
+    telefone?: string;
+    responsavel?: string;
+  }>({});
+
+  // feedback visual pós-envio
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [justSent, setJustSent] = useState(false); // desabilita formulário/botão após sucesso
+
   const responsavelObrigatorio = idade !== null && idade < 18;
 
   async function handleSignOut() {
@@ -49,13 +91,38 @@ export default function Signup() {
   }
 
   async function enviar() {
-    if (!nome.trim()) return Alert.alert('Atenção', 'Informe o nome do jogador.');
-    if (!dataNascimento.trim()) return Alert.alert('Atenção', 'Informe a data de nascimento (AAAA-MM-DD).');
+    // limpa msgs antigas
+    setErrors({});
+
+    // validações em ordem e para no primeiro erro
+    if (!nome.trim()) {
+      setErrors(e => ({ ...e, nome: 'Informe o nome do jogador.' }));
+      focusAndScroll(nomeRef, nomeY);
+      return;
+    }
+
+    if (!dataNascimento.trim()) {
+      setErrors(e => ({ ...e, data_nascimento: 'Informe a data de nascimento (AAAA-MM-DD).' }));
+      focusAndScroll(null, dateY); // date é nativo; rola até ele
+      return;
+    }
     const dob = new Date(dataNascimento);
-    if (isNaN(dob.getTime())) return Alert.alert('Atenção', 'Data de nascimento inválida.');
-    if (!telefone.trim()) return Alert.alert('Atenção', 'Informe um número de telefone para contato.');
+    if (isNaN(dob.getTime())) {
+      setErrors(e => ({ ...e, data_nascimento: 'Data de nascimento inválida.' }));
+      focusAndScroll(null, dateY);
+      return;
+    }
+
+    if (!telefone.trim()) {
+      setErrors(e => ({ ...e, telefone: 'Informe um número de telefone para contato.' }));
+      focusAndScroll(telRef, telY);
+      return;
+    }
+
     if (responsavelObrigatorio && !responsavel.trim()) {
-      return Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18 anos.');
+      setErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
+      focusAndScroll(responsavelRef, respY);
+      return;
     }
 
     setSaving(true);
@@ -72,15 +139,28 @@ export default function Signup() {
         is_jogador_guarani: false,
         observacao: null,
       });
-      if (error) throw error;
 
-      Alert.alert(
-        'Pré-inscrição enviada!',
-        'Leve o termo para assinatura do responsável. O admin fará o upload do termo assinado e aprovará.'
-      );
-      router.back();
+      if (error) throw error; // ⬅️ só daqui pra baixo é “sucesso” de fato
+
+      // banner de sucesso + UX
+      setSuccessMsg('Pré-inscrição enviada! Você será redirecionado em instantes.');
+      setJustSent(true);
+
+      // (opcional) limpar form
+      setNome('');
+      setTelefone('');
+      setEmail('');
+      setResponsavel('');
+      setDataNascimento(todayYmd());
+
+      // redireciona suave
+      setTimeout(() => {
+        setSuccessMsg(null);
+        router.back();
+      }, 5000);
+
     } catch (e: any) {
-      Alert.alert('Erro', e.message ?? 'Falha ao enviar pré-inscrição.');
+      Alert.alert('Erro', e?.message ?? 'Falha ao enviar pré-inscrição.');
     } finally {
       setSaving(false);
     }
@@ -88,7 +168,7 @@ export default function Signup() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16 }}>
         <TouchableOpacity onPress={handleSignOut} style={{ alignSelf: 'flex-end', padding: 8 }}>
           <Feather name="home" size={24} color="#00C2CB" />
         </TouchableOpacity>
@@ -97,45 +177,93 @@ export default function Signup() {
           Pré-inscrição de jogador
         </Text>
 
-        <TextInput placeholder="Nome completo do jogador" placeholderTextColor="#A0A0A0"
-          value={nome} onChangeText={setNome} style={styles.input} />
-
-        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data de nascimento</Text>
-
-        {Platform.OS === 'web' ? (
-          <input
-            type="date"
-            value={dataNascimento || todayYmd()}
-            onChange={(e) => setDataNascimento(e.currentTarget.value)}
-            max={todayYmd()} // evita datas futuras no web
+        {successMsg && (
+          <Pressable
+            onPress={() => setSuccessMsg(null)}
             style={{
-              padding: 16,
-              border: '1px solid #4A6572',
-              backgroundColor: '#203A4A',
-              color: '#FFF',
-              borderRadius: 12,
-              height: 55,
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: '#2E7D32', // verde
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 8,
               marginBottom: 12,
-              width: '100%',
-              boxSizing: 'border-box',
-              fontSize: 16,
+              borderWidth: 1,
+              borderColor: '#1B5E20',
+              gap: 8,
             }}
-          />
-        ) : (
-          <DateTimePicker
-            mode="date"
-            value={dataNascimento ? new Date(dataNascimento + 'T00:00:00') : new Date()}
-            onChange={(_, d) => {
-              if (d) {
-                const pad = (n: number) => String(n).padStart(2, '0');
-                const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-                setDataNascimento(v);
-              }
-            }}
-            maximumDate={new Date()} // evita datas futuras no mobile
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          />
+          >
+            <Feather name="check-circle" size={20} color="#fff" />
+            <Text style={{ color: '#fff', flex: 1 }}>
+              {successMsg}
+            </Text>
+            <Feather name="x" size={18} color="#fff" />
+          </Pressable>
         )}
+
+        <TextInput
+          ref={nomeRef}
+          onLayout={(e) => setNomeY(e.nativeEvent.layout.y)}
+          style={[
+            styles.input,
+            errors.nome && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+          ]}
+          placeholder="Nome completo do jogador"
+          placeholderTextColor="#A0A0A0"
+          value={nome}
+          onChangeText={(t) => { setNome(t); if (errors.nome) setErrors(s => ({ ...s, nome: undefined })); }}
+        />
+        {!!errors.nome && (
+          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+            {errors.nome}
+          </Text>
+        )}
+
+        <View onLayout={(e) => setDateY(e.nativeEvent.layout.y)}>
+          <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data de nascimento</Text>
+
+          {Platform.OS === 'web' ? (
+            <input
+              type="date"
+              value={dataNascimento || todayYmd()}
+              onChange={(e) => { setDataNascimento(e.currentTarget.value); if (errors.data_nascimento) setErrors(s => ({ ...s, data_nascimento: undefined })); }}
+              max={todayYmd()}
+              style={{
+                padding: 16,
+                border: `1px solid ${errors.data_nascimento ? '#FF6B6B' : '#4A6572'}`,
+                backgroundColor: errors.data_nascimento ? '#2A1F1F' : '#203A4A',
+                color: '#FFF',
+                borderRadius: 12,
+                height: 55,
+                marginBottom: 12,
+                width: '100%',
+                boxSizing: 'border-box',
+                fontSize: 16,
+              }}
+            />
+          ) : (
+            <DateTimePicker
+              mode="date"
+              value={dataNascimento ? new Date(dataNascimento + 'T00:00:00') : new Date()}
+              onChange={(_, d) => {
+                if (d) {
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+                  setDataNascimento(v);
+                  if (errors.data_nascimento) setErrors(s => ({ ...s, data_nascimento: undefined }));
+                }
+              }}
+              maximumDate={new Date()}
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            />
+          )}
+
+          {!!errors.data_nascimento && (
+            <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+              {errors.data_nascimento}
+            </Text>
+          )}
+        </View>
 
         {(idade !== null || categoriaAno !== null) && (
           <Text style={{ color: '#E0E0E0', marginBottom: 10 }}>
@@ -145,21 +273,61 @@ export default function Signup() {
           </Text>
         )}
 
-        <TextInput placeholder="Telefone para contato" placeholderTextColor="#A0A0A0"
-          value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" style={styles.input} />
+        <TextInput
+          ref={telRef}
+          onLayout={(e) => setTelY(e.nativeEvent.layout.y)}
+          style={[
+            styles.input,
+            errors.telefone && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+          ]}
+          placeholder="Telefone para contato"
+          placeholderTextColor="#A0A0A0"
+          value={telefone}
+          onChangeText={(t) => { setTelefone(t); if (errors.telefone) setErrors(s => ({ ...s, telefone: undefined })); }}
+          keyboardType="phone-pad"
+        />
+        {!!errors.telefone && (
+          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+            {errors.telefone}
+          </Text>
+        )}
 
         <TextInput placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
           value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
 
-        <TextInput placeholder="Nome do responsável (se menor de 18)" placeholderTextColor="#A0A0A0"
-          value={responsavel} onChangeText={setResponsavel} style={styles.input} />
+        <TextInput
+          ref={responsavelRef}
+          onLayout={(e) => setRespY(e.nativeEvent.layout.y)}
+          style={[
+            styles.input,
+            errors.responsavel && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+          ]}
+          placeholder="Nome do responsável (se menor de 18)"
+          placeholderTextColor="#A0A0A0"
+          value={responsavel}
+          onChangeText={(t) => {
+            setResponsavel(t);
+            if (errors.responsavel) setErrors((e) => ({ ...e, responsavel: undefined }));
+          }}
+        />
+        {!!errors.responsavel && (
+          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+            {errors.responsavel}
+          </Text>
+        )}
 
         <Pressable
-          style={[styles.submitButton, saving && { opacity: 0.7 }]}
+          style={[styles.submitButton, (saving || justSent) && { opacity: 0.7 }]}
           onPress={enviar}
-          disabled={saving}
+          disabled={saving || justSent}
         >
-          {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>Enviar Pré-inscrição</Text>}
+          {saving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.submitText}>
+              {justSent ? 'Enviado!' : 'Enviar Pré-inscrição'}
+            </Text>
+          )}
         </Pressable>
 
         <Text style={{ color: '#B0B0B0', marginTop: 12 }}>
@@ -190,3 +358,7 @@ const styles = {
   } as any,
   submitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 } as any,
 };
+function focusAndScroll(nomeRef: React.RefObject<TextInput | null>, nomeY: number) {
+  throw new Error('Function not implemented.');
+}
+
