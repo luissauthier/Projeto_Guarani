@@ -1726,7 +1726,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center' 
   },
   btnNeutral: { 
-    backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
+    flexDirection: 'row', backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center'
   },
   btnText: { color: '#fff', fontWeight: 'bold' },
