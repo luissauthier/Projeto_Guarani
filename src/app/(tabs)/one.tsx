@@ -851,64 +851,72 @@ export default function TreinosScreen() {
     return 'year';
   }
 
+  const [showPicker, setShowPicker] = React.useState(false);
+
   type GranularDateInputProps = {
     label: string;
-    value: string;                      // "", "YYYY", "YYYY-MM" ou "YYYY-MM-DD"
-    onChange: (v: string) => void;      // devolve no mesmo formato acima
+    value: string;                 // "", "YYYY", "YYYY-MM" ou "YYYY-MM-DD"
+    onChange: (v: string) => void; // devolve nesse formato
   };
 
   function GranularDateInput({ label, value, onChange }: GranularDateInputProps) {
-    const [mode, setMode] = React.useState<'year'|'month'|'day'>(detectGranularity(value));
-    const [showPicker, setShowPicker] = React.useState(false);
+    const [mode, setMode] = React.useState<'year' | 'month' | 'day'>(detectGranularity(value));
+    const [local, setLocal] = React.useState(value); // estado “rascunho”
 
-    // fatia valor atual em partes
-    const y = value.slice(0, 4);
-    const m = value.length >= 7 ? value.slice(5, 7) : '';
-    const d = value.length === 10 ? value.slice(8, 10) : '';
+    // Se alguém mudar de fora (botão "este mês", "todos"), sincroniza
+    React.useEffect(() => {
+      setLocal(value);
+    }, [value]);
 
-    function setYear(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 4);
-      if (mode === 'year') onChange(only);
-      else if (mode === 'month') onChange(only.length === 4 && m ? `${only}-${m}` : only);
-      else if (mode === 'day')  onChange(only.length === 4 && m && d ? `${only}-${m}-${d}` : only);
-    }
-    function setMonth(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 2);
-      const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
-      if (mode === 'month') onChange(y && mm ? `${y}-${mm}` : y);
-      else if (mode === 'day') onChange(y && mm && d ? `${y}-${mm}-${d}` : (y && mm ? `${y}-${mm}` : y));
-    }
-    function setDay(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 2);
-      const dd = only ? pad2(Math.min(31, Math.max(1, Number(only)))) : '';
-      onChange(y && m && dd ? `${y}-${m}-${dd}` : (y && m ? `${y}-${m}` : y));
+    function pad2(n: number | string) {
+      return String(n).padStart(2, '0');
     }
 
-    function switchMode(next: 'year'|'month'|'day') {
-      setMode(next);
-      // ao trocar o modo, mantenha o que já existir
-      if (next === 'year') onChange(y);
-      if (next === 'month') onChange(y && m ? `${y}-${m}` : y);
-      if (next === 'day') {
-        if (y && m && d) onChange(`${y}-${m}-${d}`);
-        else if (y && m) onChange(`${y}-${m}`);
-        else onChange(y);
+    function commit(v: string) {
+      // aqui sim avisamos o pai (e aí ele chama loadTreinos)
+      if (!v) {
+        onChange('');
+        return;
+      }
+
+      const isYear  = /^\d{4}$/.test(v);
+      const isMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+      const isDay   = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v);
+
+      if (
+        (mode === 'year'  && isYear)  ||
+        (mode === 'month' && isMonth) ||
+        (mode === 'day'   && isDay)
+      ) {
+        onChange(v);
+      } else {
+        // inválido → limpa; se quiser pode trocar por Alert
+        onChange('');
+        setLocal('');
       }
     }
 
+    function switchMode(next: 'year' | 'month' | 'day') {
+      setMode(next);
+      // não muda o filtro ainda, só muda UI
+    }
+
+    // ====== RENDER ======
     return (
       <View style={{ marginBottom: 10 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>{label}</Text>
 
-        {/* “segmented” simples */}
+        {/* “segmented buttons” Ano / Mês/Ano / Dia */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
           {(['year','month','day'] as const).map(t => (
             <TouchableOpacity
               key={t}
               onPress={() => switchMode(t)}
               style={{
-                paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8,
-                backgroundColor: mode === t ? '#18641c' : '#4A6572'
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 8,
+                backgroundColor: mode === t ? '#18641c' : '#4A6572',
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '600' }}>
@@ -918,51 +926,115 @@ export default function TreinosScreen() {
           ))}
         </View>
 
-        {/* Campos conforme o modo */}
+        {/* ===== Campo conforme o modo ===== */}
+
+        {/* ANO */}
         {mode === 'year' && (
           <TextInput
             style={styles.input}
             placeholder="AAAA"
             placeholderTextColor="#A0A0A0"
-            value={y}
-            onChangeText={setYear}
-            keyboardType="numeric"
+            keyboardType={Platform.OS === 'web' ? 'default' : 'numeric'}
+            value={local.slice(0, 4)}
+            onChangeText={(txt) => {
+              const only = txt.replace(/\D/g, '').slice(0, 4);
+              setLocal(only);           // atualiza “rascunho”
+
+              // 👉 assim que tiver 4 dígitos, já aplica o filtro
+              if (only.length === 4) {
+                commit(only);
+              }
+            }}
+            onBlur={() => {
+              const y = local.replace(/\D/g, '').slice(0, 4);
+              // se saiu do campo com menos de 4 dígitos, limpa
+              if (y.length === 4) commit(y);
+              else commit('');
+            }}
             maxLength={4}
           />
         )}
 
+        {/* MÊS/ANO */}
         {mode === 'month' && (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="MM"
-              placeholderTextColor="#A0A0A0"
-              value={m}
-              onChangeText={setMonth}
-              keyboardType="numeric"
-              maxLength={2}
-            />
-            <TextInput
-              style={[styles.input, { flex: 2 }]}
-              placeholder="AAAA"
-              placeholderTextColor="#A0A0A0"
-              value={y}
-              onChangeText={setYear}
-              keyboardType="numeric"
-              maxLength={4}
-            />
-          </View>
+          <>
+            {Platform.OS === 'web' ? (
+              <input
+                type="month"
+                value={local.length >= 7 ? local.slice(0, 7) : ''}
+                onChange={(e) => {
+                  const v = e.currentTarget.value; // "YYYY-MM"
+                  setLocal(v);
+                  commit(v); // já escolheu o mês → pode aplicar
+                }}
+                style={{
+                  padding: 10,
+                  border: '1px solid #4A6572',
+                  backgroundColor: '#203A4A',
+                  color: '#FFF',
+                  borderRadius: 10,
+                  height: 50,
+                  marginBottom: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              // mobile: dois inputs simples (MM e AAAA) com commit no blur
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="MM"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={local.slice(5, 7)}
+                  onChangeText={(txt) => {
+                    const only = txt.replace(/\D/g, '').slice(0, 2);
+                    const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
+                    // mantém ano já digitado
+                    const y = local.slice(0, 4);
+                    setLocal(y && mm ? `${y}-${mm}` : y);
+                  }}
+                  onBlur={() => commit(local)}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 2 }]}
+                  placeholder="AAAA"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={local.slice(0, 4)}
+                  onChangeText={(txt) => {
+                    const only = txt.replace(/\D/g, '').slice(0, 4);
+                    const mm = local.slice(5, 7);
+                    setLocal(only && mm ? `${only}-${mm}` : only);
+                  }}
+                  onBlur={() => commit(local)}
+                />
+              </View>
+            )}
+          </>
         )}
 
+        {/* DIA */}
         {mode === 'day' && (
           <>
             {Platform.OS === 'web' ? (
               <input
                 type="date"
-                value={value.length === 10 ? value : (y && m ? `${y}-${m}-${pad2(d || '01')}` : '')}
+                value={local.length === 10 ? local : ''}
                 onChange={(e) => {
-                  const v = e.currentTarget.value; // YYYY-MM-DD
-                  onChange(v);
+                  // só atualiza o rascunho, sem aplicar ainda
+                  const v = e.currentTarget.value; // "YYYY-MM-DD" ou ""
+                  setLocal(v);
+                }}
+                onBlur={(e) => {
+                  // ao sair do campo, aí sim aplica o filtro
+                  const v = e.currentTarget.value;
+                  if (v) {
+                    commit(v);      // ex.: "2025-11-03"
+                  } else {
+                    commit('');     // limpa filtro
+                  }
                 }}
                 style={{
                   padding: 10,
@@ -978,20 +1050,22 @@ export default function TreinosScreen() {
               />
             ) : (
               <>
+                {/* mobile fica igual, aplicando no onChange do DateTimePicker */}
                 <TouchableOpacity
                   onPress={() => setShowPicker(true)}
                   style={[styles.input, { justifyContent: 'center' }]}
                 >
-                  <Text style={{ color: value ? '#fff' : '#A0A0A0' }}>
-                    {value ? value.split('-').reverse().join('/') : 'Selecionar data'}
+                  <Text style={{ color: local ? '#fff' : '#A0A0A0' }}>
+                    {local ? local.split('-').reverse().join('/') : 'Selecionar data'}
                   </Text>
                 </TouchableOpacity>
+
                 {showPicker && (
                   <DateTimePicker
                     mode="date"
                     value={
-                      value && value.length === 10
-                        ? new Date(value + 'T00:00:00')
+                      local && local.length === 10
+                        ? new Date(local + 'T00:00:00')
                         : new Date()
                     }
                     onChange={(_, d) => {
@@ -1000,46 +1074,15 @@ export default function TreinosScreen() {
                         const yy = d.getFullYear();
                         const mm = pad2(d.getMonth() + 1);
                         const dd = pad2(d.getDate());
-                        onChange(`${yy}-${mm}-${dd}`);
+                        const v = `${yy}-${mm}-${dd}`;
+                        setLocal(v);
+                        commit(v); // aqui pode aplicar direto, UX de mobile é diferente
                       }
                     }}
                     display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   />
                 )}
               </>
-            )}
-
-            {/* Caso queira editar manualmente MM/AAAA/DIA também: */}
-            {Platform.OS !== 'web' && (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="DD"
-                  placeholderTextColor="#A0A0A0"
-                  value={d}
-                  onChangeText={setDay}
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="MM"
-                  placeholderTextColor="#A0A0A0"
-                  value={m}
-                  onChangeText={setMonth}
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="AAAA"
-                  placeholderTextColor="#A0A0A0"
-                  value={y}
-                  onChangeText={setYear}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
             )}
           </>
         )}
