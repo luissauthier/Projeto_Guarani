@@ -1705,7 +1705,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20, marginBottom: 6, marginHorizontal: 8
   },
   logo: { fontSize: 32, fontWeight: '800', color: '#FFF' },
-  h1: { color: '#FFF', fontWeight: '700', fontSize: 22, marginBottom: 12, textAlign: 'center' },
+  h1: { color: '#FFF', fontWeight: '700', fontSize: 22, marginTop: 12, marginBottom: 12, textAlign: 'center' },
   input: {
     height: 50, backgroundColor: '#203A4A', borderRadius: 10, paddingHorizontal: 12,
     color: '#FFF', borderWidth: 1, borderColor: '#4A6572', marginBottom: 10

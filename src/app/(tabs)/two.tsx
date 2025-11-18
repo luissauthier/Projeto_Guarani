@@ -1751,7 +1751,7 @@ const styles = StyleSheet.create({
   header: { flexDirection:'row', justifyContent:'space-between', alignItems:'center',
     paddingVertical:20, marginBottom:6, marginHorizontal:8 },
   logo: { fontSize:32, fontWeight:'800', color:'#FFF' },
-  h1: { color:'#FFF', fontWeight:'700', fontSize:22, marginBottom:12, textAlign:'center' },
+  h1: { color:'#FFF', fontWeight:'700', fontSize:22, marginTop: 12, marginBottom:12, textAlign:'center' },
 
   segment: { flexDirection:'row', gap:8, marginBottom:12, justifyContent:'center' },
   segmentBtn: { paddingVertical:8, paddingHorizontal:12, borderRadius:20, backgroundColor:'#203A4A' },
