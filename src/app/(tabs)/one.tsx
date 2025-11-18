@@ -245,6 +245,39 @@ export default function TreinosScreen() {
   const [inicioStr, setInicioStr] = useState<string>('');   // "", "2025", "2025-11", "2025-11-03"
   const [fimStr, setFimStr] = useState<string>('');         // idem
 
+  // estados "rascunho" usados pelos inputs de data
+  const [inicioDraft, setInicioDraft] = useState<string>('');
+  const [fimDraft, setFimDraft] = useState<string>('');
+
+  useEffect(() => {
+    setInicioDraft(inicioStr);
+  }, [inicioStr]);
+
+  useEffect(() => {
+    setFimDraft(fimStr);
+  }, [fimStr]);
+
+  function handleChangeInicioDraft(v: string) {
+    setInicioDraft(v);
+    if (Platform.OS !== 'web') {
+      // no mobile, aplica imediatamente
+      setInicioStr(v);
+    }
+  }
+
+  function handleChangeFimDraft(v: string) {
+    setFimDraft(v);
+    if (Platform.OS !== 'web') {
+      // no mobile, aplica imediatamente
+      setFimStr(v);
+    }
+  }
+
+  function aplicarFiltroDatas() {
+    setInicioStr(inicioDraft);
+    setFimStr(fimDraft);
+  }
+
   // --- contagem de presenças por treino ---
   const [presCount, setPresCount] = useState<Record<string, { presente: number; faltou: number; justificou: number }>>({});
 
@@ -670,39 +703,51 @@ export default function TreinosScreen() {
   function rangeFromYmd(s: string) {
     const g = detectGranularity(s);
     if (!g) return null;
+
     if (g === 'year') {
-      const y = Number(s.slice(0,4));
-      const start = new Date(y,0,1,0,0,0);
-      const end   = new Date(y+1,0,1,0,0,0);
+      const y = Number(s.slice(0, 4));
+      const start = new Date(y, 0, 1, 0, 0, 0);
+      const end   = new Date(y + 1, 0, 1, 0, 0, 0);
       return { startISO: start.toISOString(), endISO: end.toISOString() };
     }
+
     if (g === 'month') {
-      const [y,m] = s.split('-').map(Number);
-      const start = new Date(y, m-1, 1, 0,0,0);
-      const end   = new Date(y, m,   1, 0,0,0);
+      const [y, m] = s.split('-').map(Number);
+      const start = new Date(y, m - 1, 1, 0, 0, 0);
+      const end   = new Date(y, m,     1, 0, 0, 0);
       return { startISO: start.toISOString(), endISO: end.toISOString() };
     }
+
     // day
-    const [y,m,d] = s.split('-').map(Number);
-    const start = new Date(y, m-1, d, 0,0,0);
-    const end   = new Date(y, m-1, d+1, 0,0,0); // intervalo half-open => inclui o dia
+    const [y, m, d] = s.split('-').map(Number);
+    const start = new Date(y, m - 1, d, 0, 0, 0);
+    const end   = new Date(y, m - 1, d + 1, 0, 0, 0); // half-open => inclui o dia
     return { startISO: start.toISOString(), endISO: end.toISOString() };
   }
 
   // Constrói range final a partir de início/fim (strings)
-  // Regra: se só início -> usa seu próprio range; se início + fim -> usa inicio.start .. fim.end
+  // - só início  -> de início em diante (sem fim)
+  // - só fim     -> até o fim do período de fim (sem início)
+  // - início+fim -> entre os dois
   function buildRangeFromInputs(inicio: string, fim: string) {
     const ri = inicio ? rangeFromYmd(inicio) : null;
     const rf = fim    ? rangeFromYmd(fim)    : null;
 
-    if (ri && !rf) return ri;            // só início
-    if (!ri && !rf) return null;         // nenhum -> todos
-    if (!ri && rf)  return rf;           // só fim (tratamos como o período do fim)
+    // nenhum filtro
+    if (!ri && !rf) return null;
 
-    // ambos válidos: start = do início, end = do fim
-    const startISO = ri!.startISO;
-    const endISO   = rf!.endISO;
-    return { startISO, endISO };
+    // só INÍCIO: de início em diante
+    if (ri && !rf) {
+      return { startISO: ri.startISO, endISO: null as string | null };
+    }
+
+    // só FIM: tudo até o fim do período
+    if (!ri && rf) {
+      return { startISO: null as string | null, endISO: rf.endISO };
+    }
+
+    // INÍCIO + FIM: intervalo entre eles
+    return { startISO: ri!.startISO, endISO: rf!.endISO };
   }
 
   const loadTreinos = useCallback(async () => {
@@ -715,8 +760,11 @@ export default function TreinosScreen() {
         .select('*')
         .order('data_hora', { ascending: true });
 
-      if (range) {
-        query = query.gte('data_hora', range.startISO).lt('data_hora', range.endISO);
+      if (range?.startISO) {
+        query = query.gte('data_hora', range.startISO);
+      }
+      if (range?.endISO) {
+        query = query.lt('data_hora', range.endISO);
       }
 
       const { data, error } = await query;
@@ -724,7 +772,7 @@ export default function TreinosScreen() {
 
       setTreinos((data ?? []) as Treino[]);
       const ids = (data ?? []).map((t: any) => t.id);
-      await loadPresencasCountFor(ids); // você já tem essa função
+      await loadPresencasCountFor(ids);
     } catch (e: any) {
       console.log('[loadTreinos] erro:', e?.message ?? e);
       Alert.alert('Erro', e?.message ?? 'Falha ao carregar treinos.');
@@ -1367,21 +1415,32 @@ export default function TreinosScreen() {
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
           <View style={{ flex: 1 }}>
             <GranularDateInput
               label="Início"
-              value={inicioStr}
-              onChange={setInicioStr}
+              value={inicioDraft}
+              onChange={handleChangeInicioDraft}
             />
           </View>
+
           <View style={{ flex: 1 }}>
             <GranularDateInput
               label="Fim (opcional)"
-              value={fimStr}
-              onChange={setFimStr}
+              value={fimDraft}
+              onChange={handleChangeFimDraft}
             />
           </View>
+
+          {/* Botão aplicar apenas no web */}
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              onPress={aplicarFiltroDatas}
+              style={styles.btnApplyFilter}
+            >
+              <Feather name="filter" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
@@ -1415,10 +1474,6 @@ export default function TreinosScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* (opcional) feedback de granularidade */}
-        <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
-          Dicas: use "2025" para o ano, "2025-11" para o mês, ou "2025-11-03" para o dia. Preencha os dois para intervalo.
-        </Text>
       </View>
 
       {loading ? (
@@ -1675,6 +1730,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center'
   },
   btnText: { color: '#fff', fontWeight: 'bold' },
+  btnApplyFilter: {
+    backgroundColor: '#18641c',
+    height: 50,
+    width: 50,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
   box: {
     backgroundColor: '#1E2F47', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#3A506B', marginBottom: 12
