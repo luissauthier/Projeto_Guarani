@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Link } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (notification) {
@@ -96,14 +97,20 @@ export default function Login() {
               autoCapitalize="none"
               value={email}
               onChangeText={setEmail}
+              returnKeyType="next" // Muda o botão do teclado para "Próximo"
+              onSubmitEditing={() => passwordInputRef.current?.focus()} // Pula para a senha
+              blurOnSubmit={false} // Não fecha o teclado
             />
             <TextInput
+              ref={passwordInputRef}
               style={styles.input}
               placeholder="Sua senha"
               placeholderTextColor="#A0A0A0"
               secureTextEntry
               value={password}
               onChangeText={setPassword}
+              returnKeyType="go" // Muda o botão para "Ir" ou "Enter"
+              onSubmitEditing={handleSignIn} // CHAMA A FUNÇÃO DE LOGIN
             />
 
             <Pressable

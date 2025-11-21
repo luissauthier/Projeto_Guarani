@@ -14,6 +14,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { TextInputMask } from 'react-native-masked-text';
 
 const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
 const ModalSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
@@ -177,7 +178,7 @@ function isCnpjLenOk(digits?: string | null) { return !!digits && digits.length 
 
 /* ============== Tipos ============== */
 type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
-type TipoVol = 'viewer' | 'coach' | 'admin';
+type TipoCol = 'viewer' | 'coach' | 'admin';
 
 type Jogador = {
   id: string;
@@ -204,17 +205,17 @@ type UserRow = {
   telefone: string | null;
   ativo: boolean;
   observacoes: string | null;
-  type_user: TipoVol | null;   // <- era "tipo"
+  type_user: TipoCol | null;   // <- era "tipo"
   created_at: string;
   updated_at: string | null;
 };
 
 const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo'];
-const VOL_TIPOS: TipoVol[] = ['viewer', 'coach', 'admin'];
+const COL_TIPOS: TipoCol[] = ['viewer', 'coach', 'admin'];
 const getCategoriaAno = (j: Jogador) =>
   j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
 
-const VOL_LABEL: Record<TipoVol, string> = {
+const COL_LABEL: Record<TipoCol, string> = {
   viewer: 'viewer',
   coach: 'coach',
   admin: 'admin',
@@ -350,7 +351,7 @@ function formatLocalForInput(iso: string) {
   function onlyDigits(v: string) { return v.replace(/\D/g, ''); }
   function handleYearFrom(v: string) { setYearFrom(onlyDigits(v)); }
   function handleYearTo(v: string) { setYearTo(onlyDigits(v)); }
-  const [filtroTipoVol, setFiltroTipoVol] = useState<TipoVol | 'todos'>('todos');
+  const [filtroTipoCol, setFiltroTipoCol] = useState<TipoCol | 'todos'>('todos');
   const [filtroAtivo, setFiltroAtivo] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const [filtroGuarani, setFiltroGuarani] = useState<'todos'|'sim'|'nao'>('todos');
   const [filtroTermo, setFiltroTermo] = useState<'todos'|'sim'|'nao'>('todos');
@@ -454,7 +455,7 @@ function formatLocalForInput(iso: string) {
   const colaboradoresFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     return colaboradores.filter(v => {
-      if (filtroTipoVol !== 'todos' && v.type_user !== filtroTipoVol) return false; // <- type_user
+      if (filtroTipoCol !== 'todos' && v.type_user !== filtroTipoCol) return false; // <- type_user
       if (filtroAtivo === 'ativos' && !v.ativo) return false;
       if (filtroAtivo === 'inativos' && v.ativo) return false;
       if (!q) return true;
@@ -468,7 +469,7 @@ function formatLocalForInput(iso: string) {
       ].join(' ').toLowerCase();
       return blob.includes(q);
     });
-  }, [colaboradores, search, filtroTipoVol, filtroAtivo]);
+  }, [colaboradores, search, filtroTipoCol, filtroAtivo]);
 
   const parceirosFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -525,12 +526,13 @@ function formatLocalForInput(iso: string) {
   const [modalJog, setModalJog] = useState(false);
   const [editJog, setEditJog] = useState<Jogador | null>(null);
   const [formJog, setFormJog] = useState<Partial<Jogador>>({});
-
+  const [jogTelefoneMasked, setJogTelefoneMasked] = useState('');
+  
   // ===== Jogador: foco/scroll/erro do RESPONSÁVEL =====
   const jogScrollRef = React.useRef<ScrollView>(null);
   const responsavelRef = React.useRef<TextInput>(null);
   const [jogRespY, setJogRespY] = React.useState<number>(0);
-  const [jogErrors, setJogErrors] = React.useState<{ responsavel?: string }>({});
+const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
 
 
   // === Feedback abaixo do nascimento (igual ao Signup) ===
@@ -565,18 +567,50 @@ function formatLocalForInput(iso: string) {
     if (j) { 
       setEditJog(j); 
       setFormJog(j); 
+      setJogTelefoneMasked(j.telefone ?? '');
     } else { 
       setEditJog(null); 
       setFormJog({ status: 'pre_inscrito' as StatusJog, data_nascimento: todayYmd() }); // 👈 default = hoje
+      setJogTelefoneMasked('');
     }
     setModalJog(true);
   }
 
   async function saveJogador() {
+    // 1. Limpa erros anteriores
+    setJogErrors({});
+    const errors: Record<string, string> = {};
+
+    // 2. Validação do NOME
+    const nomeValido = (formJog.nome ?? '').trim();
+    if (!nomeValido) {
+      errors.nome = 'Nome é obrigatório.';
+    }
+
+    // 3. Validação do TELEFONE
+    const telefoneValido = (formJog.telefone ?? '').trim();
+    if (!telefoneValido) {
+      errors.telefone = 'Telefone é obrigatório.';
+    }
+
+    // 4. Validação do RESPONSÁVEL (Usando a lógica segura que já criamos)
+    if (responsavelObrigatorio) {
+      const nomeResp = (formJog.responsavel_nome ?? '').trim();
+      if (!nomeResp) {
+        errors.responsavel = 'Responsável é obrigatório para menores de 18 anos.';
+      }
+    }
+
+    // 5. SE HOUVER ERROS, PARA TUDO E MOSTRA NA TELA
+    if (Object.keys(errors).length > 0) {
+      setJogErrors(errors);
+      setSavingJog(false);
+      return; // <--- Interrompe aqui, não salva
+    }
     if (!formJog?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome.');
     if (!formJog?.telefone?.trim()) return Alert.alert('Atenção', 'Informe o telefone.');
     // responsável obrigatório para menor de 18
-    if (responsavelObrigatorio && !formJog?.responsavel_nome?.trim()) {
+    if (!responsavelObrigatorio && !(formJog.responsavel_nome ?? '').trim()) {
       setSavingJog(false);
       setJogErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
       requestAnimationFrame(() => {
@@ -646,6 +680,7 @@ function formatLocalForInput(iso: string) {
     if (p) {
       setEditPar(p);
       setFormPar(p);
+      setParTelefoneMasked(p.telefone ?? '');
       // pega YYYY-MM-DD da coluna created_at (ou mantém hoje se não vier)
       const iso = p.created_at ?? '';
       const ymd = iso ? iso.slice(0, 10) : todayYmd();
@@ -658,6 +693,7 @@ function formatLocalForInput(iso: string) {
         tipo_doador: 'unico',
         termo_assinado: false,
       });
+      setParTelefoneMasked('');
       setParSince(todayYmd()); // default = hoje
     }
     setModalPar(true);
@@ -667,14 +703,15 @@ function formatLocalForInput(iso: string) {
   const parScrollRef = React.useRef<ScrollView>(null);
   const cpfCnpjRef = React.useRef<TextInput>(null);
   const [parFieldY, setParFieldY] = React.useState<number>(0);
-  const [parErrors, setParErrors] = React.useState<{ cpf_cnpj?: string }>({});
+const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
+  const [parTelefoneMasked, setParTelefoneMasked] = useState('');
 
   // ====== MODAL DE EXCLUSÃO (Genérico) ======
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, nome?: string, full_name?: string | null } | null>(null);
-  const [deleteEntityType, setDeleteEntityType] = useState<'jogador' | 'voluntario'| 'parceiro' | null>(null);
+  const [deleteEntityType, setDeleteEntityType] = useState<'jogador' | 'colaborador'| 'parceiro' | null>(null);
 
-  function openDeleteConfirm(item: { id: string, nome?: string, full_name?: string | null }, type: 'jogador' | 'voluntario' | 'parceiro') {
+  function openDeleteConfirm(item: { id: string, nome?: string, full_name?: string | null }, type: 'jogador' | 'colaborador' | 'parceiro') {
     setItemToDelete(item);
     setDeleteEntityType(type);
     setDeleteModalVisible(true);
@@ -687,7 +724,7 @@ function formatLocalForInput(iso: string) {
   async function handleConfirmDelete() {
     if (!itemToDelete || !deleteEntityType) return;
     if (deleteEntityType === 'jogador') await deletarJog(itemToDelete.id);
-    else if (deleteEntityType === 'voluntario') await deletarVol(itemToDelete.id);
+    else if (deleteEntityType === 'colaborador') await deletarCol(itemToDelete.id);
     else if (deleteEntityType === 'parceiro') {
       // VVV CRIE UMA NOVA FUNÇÃO 'deletarParceiro' VVV
       await deletarParceiro(itemToDelete.id);
@@ -796,49 +833,84 @@ function formatLocalForInput(iso: string) {
   }
 
   // ====== Colaborador (users) ======
-  const [modalVol, setModalVol] = useState(false);
-  const [editVol, setEditVol] = useState<UserRow | null>(null);
-  const [formVol, setFormVol] = useState<Partial<UserRow>>({});
-  const [savingVol, setSavingVol] = useState(false);
+  const [modalCol, setModalCol] = useState(false);
+  const [editCol, setEditCol] = useState<UserRow | null>(null);
+  const [formCol, setFormCol] = useState<Partial<UserRow>>({});
+  const [savingCol, setSavingCol] = useState(false);
   const [newPassword, setNewPassword] = useState<string>('');
   const [modalPar, setModalPar] = useState(false);
   const [editPar, setEditPar] = useState<Parceiro | null>(null);
   const [formPar, setFormPar] = useState<Partial<Parceiro>>({});
   const [savingPar, setSavingPar] = useState(false);
+  const [colErrors, setColErrors] = useState<Record<string, string>>({});
+  const [colTelefoneMasked, setColTelefoneMasked] = useState('');
 
-  function openEditVol(v?: UserRow) {
+  function openeditCol(v?: UserRow) {
     if (v) {
-      setEditVol(v);
-      setFormVol(v);
+      setEditCol(v);
+      setFormCol(v);
+      setColTelefoneMasked(v.telefone ?? '');
     } else {
       // ✅ defina um default válido do DB — escolha o que faz sentido (viewer é comum)
-      setEditVol(null);
-      setFormVol({ ativo: true, type_user: 'viewer' as TipoVol });
+      setEditCol(null);
+      setFormCol({ ativo: true, type_user: 'viewer' as TipoCol });
+      setColTelefoneMasked('');
     }
-    setModalVol(true);
+    setModalCol(true);
   }
 
-  async function saveVol() {
-    if (!formVol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do Colaborador.');
-    if (!formVol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
+  async function saveCol() {
+    // 1. Inicia o salvamento e limpa erros
+    setSavingCol(true);
+    setColErrors({}); 
+    const errors: Record<string, string> = {};
+
+    // 2. Validação de NOME
+    const nomeValido = (formCol.full_name ?? '').trim();
+    if (!nomeValido) {
+      errors.full_name = 'Nome é obrigatório.';
+    }
+
+    // 3. Validação de E-MAIL
+    const emailValido = (formCol.email ?? '').trim();
+    if (!emailValido) {
+      errors.email = 'E-mail é obrigatório.';
+    }
+
+    // 4. Validação de SENHA (Apenas se for um NOVO cadastro)
+    // Se editCol for nulo, é um cadastro novo.
+    if (!editCol) {
+      if (!newPassword || newPassword.trim().length < 6) {
+        errors.password = 'Senha é obrigatória (mínimo 6 caracteres).';
+      }
+    }
+
+    // 5. SE HOUVER ERROS, PARA TUDO
+    if (Object.keys(errors).length > 0) {
+      setColErrors(errors);
+      setSavingCol(false);
+      return; // <--- Interrompe aqui
+    }
+    if (!formCol?.full_name?.trim()) return Alert.alert('Atenção', 'Informe o nome do Colaborador.');
+    if (!formCol?.email?.trim()) return Alert.alert('Atenção', 'Informe o e-mail.');
 
     try {
-      setSavingVol(true);
+      setSavingCol(true);
 
-      if (editVol) {
+      if (editCol) {
         // ====== E D I T A R  ======
         const { error } = await supabase
           .from('users')
           .update({
-            full_name: formVol.full_name ?? null,
-            telefone: formVol.telefone ?? null,
-            email: formVol.email ?? null,
-            type_user: formVol.type_user ?? null,
-            ativo: formVol.ativo ?? true,
-            observacoes: formVol.observacoes ?? null,
+            full_name: formCol.full_name ?? null,
+            telefone: formCol.telefone ?? null,
+            email: formCol.email ?? null,
+            type_user: formCol.type_user ?? null,
+            ativo: formCol.ativo ?? true,
+            observacoes: formCol.observacoes ?? null,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', editVol.id);
+          .eq('id', editCol.id);
 
         // 1) primeiro garante que o update deu certo
         if (error) throw error;
@@ -848,15 +920,15 @@ function formatLocalForInput(iso: string) {
           const { data: sess } = await supabase.auth.getSession();
           const { error: pwErr } = await supabase.functions.invoke('admin-update-password', {
             headers: { Authorization: `Bearer ${sess?.session?.access_token ?? ''}` },
-            body: { user_id: editVol.id, new_password: newPassword.trim() },
+            body: { user_id: editCol.id, new_password: newPassword.trim() },
           });
           if (pwErr) throw pwErr;
         }
 
         // 3) fecha modal, limpa estado, recarrega e avisa
-        setModalVol(false);
-        setEditVol(null);
-        setFormVol({});
+        setModalCol(false);
+        setEditCol(null);
+        setFormCol({});
         setNewPassword('');
 
         await load();
@@ -872,15 +944,15 @@ function formatLocalForInput(iso: string) {
       const accessToken = sess?.session?.access_token ?? '';
 
       const payload = {
-        email: formVol.email,
+        email: formCol.email,
         password: newPassword,
-        full_name: formVol.full_name,
-        telefone: formVol.telefone,
-        type_user: formVol.type_user as 'viewer' | 'coach' | 'admin',
-        observacoes: formVol.observacoes ?? null,
+        full_name: formCol.full_name,
+        telefone: formCol.telefone,
+        type_user: formCol.type_user as 'viewer' | 'coach' | 'admin',
+        observacoes: formCol.observacoes ?? null,
       };
 
-      const { data, error } = await supabase.functions.invoke('create-volunteer', {
+      const { data, error } = await supabase.functions.invoke('create-colaborator', {
         body: payload,
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -898,38 +970,38 @@ function formatLocalForInput(iso: string) {
         return;
       }
 
-      setModalVol(false);
-      setEditVol(null);
-      setFormVol({});
+      setModalCol(false);
+      setEditCol(null);
+      setFormCol({});
       setNewPassword('');
 
       await load();
       setDebugMsg('✅ Colaborador criado com sucesso.');
       Alert.alert('Sucesso', 'Colaborador criado com senha.');
     } catch (e: any) {
-      console.log('[saveVol] erro:', e);
+      console.log('[saveCol] erro:', e);
       Alert.alert('Erro ao Salvar Colaborador', debugSbError('salvar Colaborador', e));
     } finally {
-      setSavingVol(false);
+      setSavingCol(false);
     }
   }
 
   /* ================= "Excluir" Colaborador ================= */
-  async function deletarVol(id: string) {
-    console.log('[UI] deletarVol start', id);
+  async function deletarCol(id: string) {
+    console.log('[UI] deletarCol start', id);
     await debugLogSession();
 
     try {
       const { data: sess } = await supabase.auth.getSession();
       const accessToken = sess?.session?.access_token ?? '';
 
-      const { error } = await supabase.functions.invoke('delete-volunteer', {
+      const { error } = await supabase.functions.invoke('delete-colaborator', {
         body: { user_id: id },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       if (error) {
-        const msg = debugSbError('delete-volunteer edge fn', error);
+        const msg = debugSbError('delete-colaborator edge fn', error);
         setDebugMsg(msg);
         return;
       }
@@ -1076,13 +1148,13 @@ function formatLocalForInput(iso: string) {
             <View style={styles.col}>
               <Text style={styles.label}>Tipo</Text>
               <Picker
-                selectedValue={filtroTipoVol}
-                onValueChange={(v)=>setFiltroTipoVol(v as any)}
+                selectedValue={filtroTipoCol}
+                onValueChange={(v)=>setFiltroTipoCol(v as any)}
                 style={styles.picker}
               >
                 <Picker.Item label="Todos" value="todos" />
-                {VOL_TIPOS.map(t => (
-                  <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
+                {COL_TIPOS.map(t => (
+                  <Picker.Item key={t} label={COL_LABEL[t]} value={t} />
                 ))}
               </Picker>
             </View>
@@ -1134,7 +1206,7 @@ function formatLocalForInput(iso: string) {
             <Text style={styles.btnText}>  Cadastrar Jogador</Text>
           </TouchableOpacity>
         ) : tab === 'colaboradores' ? (
-          <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol()}>
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol()}>
             <Feather name="user-plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Cadastrar Colaborador</Text>
           </TouchableOpacity>
@@ -1223,17 +1295,17 @@ function formatLocalForInput(iso: string) {
               renderItem={({ item, index }) => (
                 <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
                   <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]}>{VOL_LABEL[item.type_user!]}</Text>
+                  <Text style={[tableStyles.cell, { width: 160 }]}>{COL_LABEL[item.type_user!]}</Text>
                   <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
                   <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
                   <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
                   <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
-                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditVol(item)}>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
                       <Text style={styles.btnText}>Editar</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'voluntario')}
+                      onPress={() => openDeleteConfirm(item, 'colaborador')}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Text style={styles.btnText}>Excluir</Text>
@@ -1296,12 +1368,28 @@ function formatLocalForInput(iso: string) {
         <Text style={styles.h1}>{editJog ? 'Editar Jogador' : 'Cadastrar Jogador'}</Text>
 
         <TextInput
-          style={styles.input}
+          // 1. MUDANÇA NO ESTILO: Se tiver erro, aplica a borda vermelha
+          style={[styles.input, jogErrors.nome && styles.inputError]}
+          
           placeholder="Nome completo"
           placeholderTextColor="#A0A0A0"
           value={formJog.nome ?? ''}
-          onChangeText={(t) => setFormJog((s) => ({ ...s, nome: t }))}
+          
+          // 2. MUDANÇA NO ONCHANGE: Limpa o erro ao digitar
+          onChangeText={(t) => {
+            setFormJog((s) => ({ ...s, nome: t }));
+            // Se existir um erro de nome, limpa ele imediatamente
+            if (jogErrors.nome) {
+              setJogErrors((prev) => ({ ...prev, nome: '' }));
+            }
+          }}
         />
+        
+        {/* 3. MUDANÇA: Exibe o texto de erro embaixo do input */}
+        {jogErrors.nome && (
+          <Text style={styles.inputErrorText}>{jogErrors.nome}</Text>
+        )}
+
         <Text style={styles.label}>Data de nascimento</Text>
         {Platform.OS === 'web' ? (
           <input
@@ -1347,14 +1435,35 @@ function formatLocalForInput(iso: string) {
           </Text>
         )}
 
-        <TextInput
-          style={styles.input}
-          placeholder="Telefone"
-          placeholderTextColor="#A0A0A0"
-          value={formJog.telefone ?? ''}
-          onChangeText={(t) => setFormJog((s) => ({ ...s, telefone: t }))}
-          keyboardType="phone-pad"
-        />
+        <TextInputMask
+              type={'cel-phone'}
+              options={{ maskType: 'BRL', withDDD: true, dddMask: '(99) ' }}
+              
+              // Adicione a condicional de estilo aqui também:
+              style={[styles.input, jogErrors.telefone && styles.inputError]} 
+              
+              placeholder="Telefone (com DDD)"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="phone-pad"
+              value={Platform.OS === 'web' ? jogTelefoneMasked : (formJog.telefone ?? '')}
+              onChangeText={(maskedText, rawText) => {
+                // 1. GARANTIA: Limpamos manualmente para não depender da biblioteca
+                // Pega "(11) 99999-9999" e transforma em "11999999999"
+                const numeroLimpo = maskedText.replace(/\D/g, ''); 
+                
+                setFormJog((s) => ({ ...s, telefone: numeroLimpo }));
+                
+                // 2. Atualiza o visual
+                setJogTelefoneMasked(maskedText ?? '');
+
+                // 3. Limpa o erro visual se existir
+                if (jogErrors.telefone) {
+                   setJogErrors(e => ({ ...e, telefone: '' }));
+                }
+              }}
+            />
+        {/* Mensagem de erro do telefone */}
+        {jogErrors.telefone && <Text style={styles.inputErrorText}>{jogErrors.telefone}</Text>}
         <TextInput
           style={styles.input}
           placeholder="E-mail (opcional)"
@@ -1365,20 +1474,17 @@ function formatLocalForInput(iso: string) {
         />
         <TextInput
           ref={responsavelRef}
-          onLayout={(e) => setJogRespY(e.nativeEvent.layout.y)}
-          style={[styles.input, jogErrors.responsavel && styles.inputError]}
+          // ... suas props de layout ...
+          style={[styles.input, jogErrors.responsavel && styles.inputError]} // Estilo de erro
           placeholder="Responsável (se menor de 18)"
-          placeholderTextColor="#A0A0A0"
-          value={formJog.responsavel_nome ?? ''}
+          // ...
           onChangeText={(t) => {
-            setFormJog((s) => ({ ...s, responsavel_nome: t }));
-            if (jogErrors.responsavel) setJogErrors((e) => ({ ...e, responsavel: undefined }));
+             setFormJog((s) => ({ ...s, responsavel_nome: t }));
+             // Limpa erro ao digitar
+             if (jogErrors.responsavel) setJogErrors((e) => ({ ...e, responsavel: '' }));
           }}
         />
-        {!!jogErrors.responsavel && (
-          <Text style={styles.inputErrorText}>{jogErrors.responsavel}</Text>
-        )}
-
+        {jogErrors.responsavel && <Text style={styles.inputErrorText}>{jogErrors.responsavel}</Text>}
         {/* === NOVOS CAMPOS === */}
         <SwitchField
           label="Jogador Guarani"
@@ -1430,60 +1536,105 @@ function formatLocalForInput(iso: string) {
   </Modal>
           
   {/* MODAL Colaborador (USERS) */}
-  <Modal visible={modalVol} animationType="slide" onRequestClose={() => setModalVol(false)}>
+  <Modal visible={modalCol} animationType="slide" onRequestClose={() => setModalCol(false)}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={styles.h1}>{editVol ? 'Editar Colaborador' : 'Cadastrar Colaborador'}</Text>
+        <Text style={styles.h1}>{editCol ? 'Editar Colaborador' : 'Cadastrar Colaborador'}</Text>
 
+        <Text style={styles.label}>Nome Completo</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Nome completo"
-          placeholderTextColor="#A0A0A0"
-          value={formVol.full_name ?? ''}
-          onChangeText={(t) => setFormVol((s) => ({ ...s, full_name: t }))}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Telefone"
-          placeholderTextColor="#A0A0A0"
-          keyboardType="phone-pad"
-          value={formVol.telefone ?? ''}
-          onChangeText={(t) => setFormVol((s) => ({ ...s, telefone: t }))}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="E-mail"
-          placeholderTextColor="#A0A0A0"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          value={formVol.email ?? ''}
-          onChangeText={(t) => setFormVol((s) => ({ ...s, email: t }))}
-        />
+              style={[styles.input, colErrors.full_name && styles.inputError]} // Estilo condicional
+              placeholder="Nome"
+              placeholderTextColor="#A0A0A0"
+              value={formCol.full_name ?? ''}
+              onChangeText={(t) => {
+                setFormCol(s => ({ ...s, full_name: t }));
+                // Limpa o erro ao digitar
+                if (colErrors.full_name) setColErrors(e => ({ ...e, full_name: '' }));
+              }}
+            />
+            {/* Mensagem de erro */}
+            {colErrors.full_name && <Text style={styles.inputErrorText}>{colErrors.full_name}</Text>}
 
-        <TextInput
-          style={styles.input}
-          placeholder={editVol ? "Nova senha (opcional)" : "Senha do Colaborador"}
-          placeholderTextColor="#A0A0A0"
-          secureTextEntry
-          value={newPassword}
-          onChangeText={setNewPassword}
-        />
+        <Text style={styles.label}>Telefone</Text>
+            <TextInputMask
+              type={'cel-phone'}
+              options={{
+                maskType: 'BRL',
+                withDDD: true,
+                dddMask: '(99) ',
+              }}
+              // Estilo com borda vermelha se tiver erro
+              style={[styles.input, colErrors.telefone && styles.inputError]}
+              placeholder="Telefone (com DDD)"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="phone-pad"
+              
+              // Lógica Web vs Mobile
+              value={Platform.OS === 'web' ? colTelefoneMasked : (formCol.telefone ?? '')}
+              
+              onChangeText={(maskedText, rawText) => {
+                // 1. Salva o valor PURO no formulário (remove tudo que não é dígito)
+                const numeroLimpo = maskedText.replace(/\D/g, '');
+                setFormCol((s) => ({ ...s, telefone: numeroLimpo }));
+                
+                // 2. Salva o valor MASCARADO no estado auxiliar (para Web)
+                setColTelefoneMasked(maskedText ?? '');
+
+                // 3. Limpa o erro ao digitar
+                if (colErrors.telefone) setColErrors(e => ({ ...e, telefone: '' }));
+              }}
+            />
+            {/* Mensagem de erro */}
+            {colErrors.telefone && <Text style={styles.inputErrorText}>{colErrors.telefone}</Text>}
+            
+        <Text style={styles.label}>E-mail</Text>
+            <TextInput
+              style={[styles.input, colErrors.email && styles.inputError]} // Estilo condicional
+              placeholder="email@exemplo.com"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={formCol.email ?? ''}
+              onChangeText={(t) => {
+                setFormCol(s => ({ ...s, email: t }));
+                // Limpa o erro ao digitar
+                if (colErrors.email) setColErrors(e => ({ ...e, email: '' }));
+              }}
+            />
+            {colErrors.email && <Text style={styles.inputErrorText}>{colErrors.email}</Text>}
+        <Text style={styles.label}>
+              {editCol ? 'Nova Senha (deixe em branco para manter)' : 'Senha'}
+            </Text>
+            <TextInput
+              style={[styles.input, colErrors.password && styles.inputError]} // Estilo condicional
+              placeholder="******"
+              placeholderTextColor="#A0A0A0"
+              secureTextEntry
+              value={newPassword}
+              onChangeText={(t) => {
+                setNewPassword(t);
+                // Limpa o erro ao digitar
+                if (colErrors.password) setColErrors(e => ({ ...e, password: '' }));
+              }}
+            />
+            {colErrors.password && <Text style={styles.inputErrorText}>{colErrors.password}</Text>}
 
         <Text style={styles.label}>Tipo</Text>
         <Picker
-          selectedValue={(formVol.type_user as TipoVol) ?? 'viewer'}
-          onValueChange={(v) => setFormVol(s => ({ ...s, type_user: v as TipoVol }))}
+          selectedValue={(formCol.type_user as TipoCol) ?? 'viewer'}
+          onValueChange={(v) => setFormCol(s => ({ ...s, type_user: v as TipoCol }))}
           style={styles.picker}
         >
-          {VOL_TIPOS.map(t => (
-            <Picker.Item key={t} label={VOL_LABEL[t]} value={t} />
+          {COL_TIPOS.map(t => (
+            <Picker.Item key={t} label={COL_LABEL[t]} value={t} />
           ))}
         </Picker>
 
         <Text style={styles.label}>Status</Text>
         <Picker
-          selectedValue={formVol.ativo ?? true ? 'ativo' : 'inativo'}
-          onValueChange={(v) => setFormVol((s) => ({ ...s, ativo: v === 'ativo' }))}
+          selectedValue={formCol.ativo ?? true ? 'ativo' : 'inativo'}
+          onValueChange={(v) => setFormCol((s) => ({ ...s, ativo: v === 'ativo' }))}
           style={styles.picker}
         >
           <Picker.Item label="Ativo" value="ativo" />
@@ -1496,15 +1647,15 @@ function formatLocalForInput(iso: string) {
           numberOfLines={4}
           placeholder="Observações"
           placeholderTextColor="#A0A0A0"
-          value={formVol.observacoes ?? ''}
-          onChangeText={(t) => setFormVol((s) => ({ ...s, observacoes: t }))}
+          value={formCol.observacoes ?? ''}
+          onChangeText={(t) => setFormCol((s) => ({ ...s, observacoes: t }))}
         />
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={saveVol} disabled={savingVol}>
-            {savingVol ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+          <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={saveCol} disabled={savingCol}>
+            {savingCol ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalVol(false)}>
+          <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={() => setModalCol(false)}>
             <Text style={styles.btnText}>Cancelar</Text>
           </TouchableOpacity>
         </View>
@@ -1527,14 +1678,39 @@ function formatLocalForInput(iso: string) {
             />
             
             <Text style={styles.label}>Telefone</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Telefone"
+            <TextInputMask
+              type={'cel-phone'}
+              options={{
+                maskType: 'BRL',
+                withDDD: true,
+                dddMask: '(99) ',
+              }}
+              // Estilo: Aplica borda vermelha se houver erro em 'parErrors'
+              style={[styles.input, parErrors.telefone && styles.inputError]}
+              placeholder="Telefone (com DDD)"
               placeholderTextColor="#A0A0A0"
               keyboardType="phone-pad"
-              value={formPar.telefone ?? ''}
-              onChangeText={(t) => setFormPar((s) => ({ ...s, telefone: t }))}
+              
+              // Lógica Web vs Mobile usando as variáveis de Parceiro
+              value={Platform.OS === 'web' ? parTelefoneMasked : (formPar.telefone ?? '')}
+              
+              onChangeText={(maskedText, rawText) => {
+                // 1. Limpa o número (remove formatação) para salvar no banco
+                const numeroLimpo = maskedText.replace(/\D/g, '');
+                
+                setFormPar((s) => ({ ...s, telefone: numeroLimpo }));
+                
+                // 2. Atualiza o estado visual da Web
+                setParTelefoneMasked(maskedText ?? '');
+
+                // 3. Limpa o erro se o usuário começar a digitar
+                if (parErrors.telefone) {
+                  setParErrors((e) => ({ ...e, telefone: '' }));
+                }
+              }}
             />
+            {/* Mensagem de erro abaixo do campo */}
+            {parErrors.telefone && <Text style={styles.inputErrorText}>{parErrors.telefone}</Text>}
 
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -1698,7 +1874,7 @@ function formatLocalForInput(iso: string) {
         <Text style={styles.modalTitle}>Confirmar Exclusão</Text>
         {itemToDelete && (
           <Text style={styles.modalText}>
-            Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : (deleteEntityType === 'voluntario' ? 'Colaborador' : 'parceiro')}{' '}
+            Você tem certeza que deseja excluir o {deleteEntityType === 'jogador' ? 'jogador' : (deleteEntityType === 'colaborador' ? 'Colaborador' : 'parceiro')}{' '}
             <Text style={{ fontWeight: 'bold' }}>{itemToDelete.nome || itemToDelete.full_name}</Text>?
             Essa ação não pode ser desfeita.
           </Text>
