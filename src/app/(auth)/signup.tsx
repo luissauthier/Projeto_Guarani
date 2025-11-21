@@ -323,10 +323,14 @@ export default function Signup() {
           </Text>
         )}
 
-        <Pressable
-          style={[styles.submitButton, (saving || justSent) && { opacity: 0.7 }]}
-          onPress={enviar}
-          disabled={saving || justSent}
+        <TouchableOpacity
+          activeOpacity={0.7} // Garante a animação visual ao clicar
+          style={[styles.submitButton, saving && { opacity: 0.5 }]}
+          onPress={() => {
+            console.log('Botão clicado!'); // Debug para ver no terminal
+            enviar();
+          }}
+          disabled={saving}
         >
           {saving ? (
             <ActivityIndicator color="#FFF" />
@@ -335,7 +339,7 @@ export default function Signup() {
               {justSent ? 'Enviado!' : 'Enviar Pré-inscrição'}
             </Text>
           )}
-        </Pressable>
+        </TouchableOpacity>
 
         <Text style={{ color: '#B0B0B0', marginTop: 12 }}>
           Após a pré-inscrição, o termo será entregue fisicamente. O admin fará upload do termo assinado e aprovará.

@@ -681,6 +681,7 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
       setEditPar(p);
       setFormPar(p);
       setParTelefoneMasked(p.telefone ?? '');
+      setParDocMasked(p.cpf_cnpj ?? '');
       // pega YYYY-MM-DD da coluna created_at (ou mantém hoje se não vier)
       const iso = p.created_at ?? '';
       const ymd = iso ? iso.slice(0, 10) : todayYmd();
@@ -694,6 +695,7 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
         termo_assinado: false,
       });
       setParTelefoneMasked('');
+      setParDocMasked('');
       setParSince(todayYmd()); // default = hoje
     }
     setModalPar(true);
@@ -705,6 +707,7 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
   const [parFieldY, setParFieldY] = React.useState<number>(0);
 const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
   const [parTelefoneMasked, setParTelefoneMasked] = useState('');
+  const [parDocMasked, setParDocMasked] = useState('');
 
   // ====== MODAL DE EXCLUSÃO (Genérico) ======
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -733,6 +736,35 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
   }
 
   async function saveParceiro() {
+    setSavingPar(true);
+    setParErrors({}); // Limpa erros antigos
+    const errors: Record<string, string> = {};
+
+    // 1. Validação de NOME
+    const nomeValido = (formPar.nome ?? '').trim();
+    if (!nomeValido) {
+      errors.nome = 'Nome é obrigatório.';
+    }
+
+    // 2. Validação de TELEFONE
+    const telefoneValido = (formPar.telefone ?? '').trim();
+    if (!telefoneValido) {
+      errors.telefone = 'Telefone é obrigatório.';
+    }
+
+    // 3. Validação de CPF ou CNPJ
+    const docValido = (formPar.cpf_cnpj ?? '').trim();
+    if (!docValido) {
+      errors.cpf_cnpj = 'CPF/CNPJ é obrigatório.';
+    }
+
+    // SE HOUVER ERROS, PARA TUDO E MOSTRA NA TELA
+    if (Object.keys(errors).length > 0) {
+      setParErrors(errors);
+      setSavingPar(false);
+      return; // <--- Interrompe aqui
+    }
+
     if (!formPar?.nome?.trim()) {
       notify('Atenção', 'Informe o nome do parceiro.');
       return;
@@ -954,7 +986,6 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
 
       const { data, error } = await supabase.functions.invoke('create-colaborator', {
         body: payload,
-        headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       if (error) {
@@ -1663,53 +1694,48 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
     </SafeAreaView>
   </Modal>
 
+{/* MODAL PARCEIROS */}
   <Modal visible={modalPar} onRequestClose={() => setModalPar(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
           <ScrollView ref={parScrollRef} contentContainerStyle={{ padding: 16 }}>
             <Text style={styles.h1}>{editPar ? 'Editar Parceiro' : 'Cadastrar Parceiro'}</Text>
 
-            <Text style={styles.label}>Nome</Text>
+            <Text style={styles.label}>Nome do Parceiro</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Nome completo"
+              style={[styles.input, parErrors.nome && styles.inputError]}
+              placeholder="Nome da Empresa ou Pessoa"
               placeholderTextColor="#A0A0A0"
               value={formPar.nome ?? ''}
-              onChangeText={(t) => setFormPar((s) => ({ ...s, nome: t }))}
+              onChangeText={(t) => {
+                setFormPar((s) => ({ ...s, nome: t }));
+                // Limpa erro ao digitar
+                if (parErrors.nome) setParErrors(e => ({ ...e, nome: '' }));
+              }}
             />
+            {parErrors.nome && <Text style={styles.inputErrorText}>{parErrors.nome}</Text>}
             
             <Text style={styles.label}>Telefone</Text>
             <TextInputMask
               type={'cel-phone'}
-              options={{
-                maskType: 'BRL',
-                withDDD: true,
-                dddMask: '(99) ',
-              }}
-              // Estilo: Aplica borda vermelha se houver erro em 'parErrors'
+              options={{ maskType: 'BRL', withDDD: true, dddMask: '(99) ' }}
+              // Estilo de erro
               style={[styles.input, parErrors.telefone && styles.inputError]}
               placeholder="Telefone (com DDD)"
               placeholderTextColor="#A0A0A0"
               keyboardType="phone-pad"
               
-              // Lógica Web vs Mobile usando as variáveis de Parceiro
+              // Web vs Mobile
               value={Platform.OS === 'web' ? parTelefoneMasked : (formPar.telefone ?? '')}
               
               onChangeText={(maskedText, rawText) => {
-                // 1. Limpa o número (remove formatação) para salvar no banco
                 const numeroLimpo = maskedText.replace(/\D/g, '');
-                
                 setFormPar((s) => ({ ...s, telefone: numeroLimpo }));
-                
-                // 2. Atualiza o estado visual da Web
                 setParTelefoneMasked(maskedText ?? '');
-
-                // 3. Limpa o erro se o usuário começar a digitar
-                if (parErrors.telefone) {
-                  setParErrors((e) => ({ ...e, telefone: '' }));
-                }
+                
+                // Limpa erro ao digitar
+                if (parErrors.telefone) setParErrors(e => ({ ...e, telefone: '' }));
               }}
             />
-            {/* Mensagem de erro abaixo do campo */}
             {parErrors.telefone && <Text style={styles.inputErrorText}>{parErrors.telefone}</Text>}
 
             <Text style={styles.label}>Email</Text>
@@ -1744,22 +1770,45 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             </Picker>
 
             <Text style={styles.label}>{formPar.tipo_pessoa === 'pf' ? 'CPF' : 'CNPJ'}</Text>
-            <TextInput
-              ref={cpfCnpjRef}
-              onLayout={(e) => setParFieldY(e.nativeEvent.layout.y)} // salva a posição Y do campo
-              style={[styles.input, parErrors.cpf_cnpj && styles.inputError]} // destaca em erro
+            <TextInputMask
+              // Alterna automaticamente a máscara baseada no tipo de pessoa
+              type={formPar.tipo_pessoa === 'pj' ? 'cnpj' : 'cpf'}
+              
+              refInput={(ref) => { 
+                 // O TextInputMask usa 'refInput' para passar a ref para o componente interno
+                 if (cpfCnpjRef) cpfCnpjRef.current = ref; 
+              }}
+              onLayout={(e) => setParFieldY(e.nativeEvent.layout.y)}
+              
+              // Estilo com borda vermelha se tiver erro
+              style={[styles.input, parErrors.cpf_cnpj && styles.inputError]}
+              
               placeholder={formPar.tipo_pessoa === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
               placeholderTextColor="#A0A0A0"
               keyboardType="numeric"
-              value={formatCpfCnpj(formPar.cpf_cnpj ?? '', formPar.tipo_pessoa ?? 'pf')}
-              onChangeText={(t) => {
-                const tipo = formPar.tipo_pessoa ?? 'pf';
-                const digits = clampCpfCnpjDigits(t, tipo);
-                setFormPar(s => ({ ...s, cpf_cnpj: digits }));
-                // limpa erro ao digitar
+              
+              // Lógica Web vs Mobile
+              value={Platform.OS === 'web' ? parDocMasked : (formPar.cpf_cnpj ?? '')}
+              
+              onChangeText={(maskedText, rawText) => {
+                // 1. GARANTIA: Limpamos manualmente (remove tudo que não for número)
+                // Isso resolve o problema do campo ficar vazio na hora de salvar
+                const numeroLimpo = maskedText.replace(/\D/g, '');
+                
+                setFormPar((s) => ({ ...s, cpf_cnpj: numeroLimpo }));
+                
+                // 2. Atualiza o visual (Web)
+                setParDocMasked(maskedText ?? '');
+
+                // 3. Limpa o erro visual se existir
+                if (parErrors.cpf_cnpj) {
+                  setParErrors((e) => ({ ...e, cpf_cnpj: '' }));
+                }
               }}
             />
-            {!!parErrors.cpf_cnpj && (
+            
+            {/* Mensagem de erro */}
+            {parErrors.cpf_cnpj && (
               <Text style={styles.inputErrorText}>{parErrors.cpf_cnpj}</Text>
             )}
 
