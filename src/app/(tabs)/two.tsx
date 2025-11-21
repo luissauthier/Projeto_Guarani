@@ -1757,7 +1757,6 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
                 const digits = clampCpfCnpjDigits(t, tipo);
                 setFormPar(s => ({ ...s, cpf_cnpj: digits }));
                 // limpa erro ao digitar
-                if (parErrors.cpf_cnpj) setParErrors((e) => ({ ...e, cpf_cnpj: undefined }));
               }}
             />
             {!!parErrors.cpf_cnpj && (
