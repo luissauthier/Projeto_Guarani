@@ -245,6 +245,39 @@ export default function TreinosScreen() {
   const [inicioStr, setInicioStr] = useState<string>('');   // "", "2025", "2025-11", "2025-11-03"
   const [fimStr, setFimStr] = useState<string>('');         // idem
 
+  // estados "rascunho" usados pelos inputs de data
+  const [inicioDraft, setInicioDraft] = useState<string>('');
+  const [fimDraft, setFimDraft] = useState<string>('');
+
+  useEffect(() => {
+    setInicioDraft(inicioStr);
+  }, [inicioStr]);
+
+  useEffect(() => {
+    setFimDraft(fimStr);
+  }, [fimStr]);
+
+  function handleChangeInicioDraft(v: string) {
+    setInicioDraft(v);
+    if (Platform.OS !== 'web') {
+      // no mobile, aplica imediatamente
+      setInicioStr(v);
+    }
+  }
+
+  function handleChangeFimDraft(v: string) {
+    setFimDraft(v);
+    if (Platform.OS !== 'web') {
+      // no mobile, aplica imediatamente
+      setFimStr(v);
+    }
+  }
+
+  function aplicarFiltroDatas() {
+    setInicioStr(inicioDraft);
+    setFimStr(fimDraft);
+  }
+
   // --- contagem de presenças por treino ---
   const [presCount, setPresCount] = useState<Record<string, { presente: number; faltou: number; justificou: number }>>({});
 
@@ -670,39 +703,51 @@ export default function TreinosScreen() {
   function rangeFromYmd(s: string) {
     const g = detectGranularity(s);
     if (!g) return null;
+
     if (g === 'year') {
-      const y = Number(s.slice(0,4));
-      const start = new Date(y,0,1,0,0,0);
-      const end   = new Date(y+1,0,1,0,0,0);
+      const y = Number(s.slice(0, 4));
+      const start = new Date(y, 0, 1, 0, 0, 0);
+      const end   = new Date(y + 1, 0, 1, 0, 0, 0);
       return { startISO: start.toISOString(), endISO: end.toISOString() };
     }
+
     if (g === 'month') {
-      const [y,m] = s.split('-').map(Number);
-      const start = new Date(y, m-1, 1, 0,0,0);
-      const end   = new Date(y, m,   1, 0,0,0);
+      const [y, m] = s.split('-').map(Number);
+      const start = new Date(y, m - 1, 1, 0, 0, 0);
+      const end   = new Date(y, m,     1, 0, 0, 0);
       return { startISO: start.toISOString(), endISO: end.toISOString() };
     }
+
     // day
-    const [y,m,d] = s.split('-').map(Number);
-    const start = new Date(y, m-1, d, 0,0,0);
-    const end   = new Date(y, m-1, d+1, 0,0,0); // intervalo half-open => inclui o dia
+    const [y, m, d] = s.split('-').map(Number);
+    const start = new Date(y, m - 1, d, 0, 0, 0);
+    const end   = new Date(y, m - 1, d + 1, 0, 0, 0); // half-open => inclui o dia
     return { startISO: start.toISOString(), endISO: end.toISOString() };
   }
 
   // Constrói range final a partir de início/fim (strings)
-  // Regra: se só início -> usa seu próprio range; se início + fim -> usa inicio.start .. fim.end
+  // - só início  -> de início em diante (sem fim)
+  // - só fim     -> até o fim do período de fim (sem início)
+  // - início+fim -> entre os dois
   function buildRangeFromInputs(inicio: string, fim: string) {
     const ri = inicio ? rangeFromYmd(inicio) : null;
     const rf = fim    ? rangeFromYmd(fim)    : null;
 
-    if (ri && !rf) return ri;            // só início
-    if (!ri && !rf) return null;         // nenhum -> todos
-    if (!ri && rf)  return rf;           // só fim (tratamos como o período do fim)
+    // nenhum filtro
+    if (!ri && !rf) return null;
 
-    // ambos válidos: start = do início, end = do fim
-    const startISO = ri!.startISO;
-    const endISO   = rf!.endISO;
-    return { startISO, endISO };
+    // só INÍCIO: de início em diante
+    if (ri && !rf) {
+      return { startISO: ri.startISO, endISO: null as string | null };
+    }
+
+    // só FIM: tudo até o fim do período
+    if (!ri && rf) {
+      return { startISO: null as string | null, endISO: rf.endISO };
+    }
+
+    // INÍCIO + FIM: intervalo entre eles
+    return { startISO: ri!.startISO, endISO: rf!.endISO };
   }
 
   const loadTreinos = useCallback(async () => {
@@ -715,8 +760,11 @@ export default function TreinosScreen() {
         .select('*')
         .order('data_hora', { ascending: true });
 
-      if (range) {
-        query = query.gte('data_hora', range.startISO).lt('data_hora', range.endISO);
+      if (range?.startISO) {
+        query = query.gte('data_hora', range.startISO);
+      }
+      if (range?.endISO) {
+        query = query.lt('data_hora', range.endISO);
       }
 
       const { data, error } = await query;
@@ -724,7 +772,7 @@ export default function TreinosScreen() {
 
       setTreinos((data ?? []) as Treino[]);
       const ids = (data ?? []).map((t: any) => t.id);
-      await loadPresencasCountFor(ids); // você já tem essa função
+      await loadPresencasCountFor(ids);
     } catch (e: any) {
       console.log('[loadTreinos] erro:', e?.message ?? e);
       Alert.alert('Erro', e?.message ?? 'Falha ao carregar treinos.');
@@ -851,64 +899,72 @@ export default function TreinosScreen() {
     return 'year';
   }
 
+  const [showPicker, setShowPicker] = React.useState(false);
+
   type GranularDateInputProps = {
     label: string;
-    value: string;                      // "", "YYYY", "YYYY-MM" ou "YYYY-MM-DD"
-    onChange: (v: string) => void;      // devolve no mesmo formato acima
+    value: string;                 // "", "YYYY", "YYYY-MM" ou "YYYY-MM-DD"
+    onChange: (v: string) => void; // devolve nesse formato
   };
 
   function GranularDateInput({ label, value, onChange }: GranularDateInputProps) {
-    const [mode, setMode] = React.useState<'year'|'month'|'day'>(detectGranularity(value));
-    const [showPicker, setShowPicker] = React.useState(false);
+    const [mode, setMode] = React.useState<'year' | 'month' | 'day'>(detectGranularity(value));
+    const [local, setLocal] = React.useState(value); // estado “rascunho”
 
-    // fatia valor atual em partes
-    const y = value.slice(0, 4);
-    const m = value.length >= 7 ? value.slice(5, 7) : '';
-    const d = value.length === 10 ? value.slice(8, 10) : '';
+    // Se alguém mudar de fora (botão "este mês", "todos"), sincroniza
+    React.useEffect(() => {
+      setLocal(value);
+    }, [value]);
 
-    function setYear(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 4);
-      if (mode === 'year') onChange(only);
-      else if (mode === 'month') onChange(only.length === 4 && m ? `${only}-${m}` : only);
-      else if (mode === 'day')  onChange(only.length === 4 && m && d ? `${only}-${m}-${d}` : only);
-    }
-    function setMonth(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 2);
-      const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
-      if (mode === 'month') onChange(y && mm ? `${y}-${mm}` : y);
-      else if (mode === 'day') onChange(y && mm && d ? `${y}-${mm}-${d}` : (y && mm ? `${y}-${mm}` : y));
-    }
-    function setDay(v: string) {
-      const only = v.replace(/\D/g, '').slice(0, 2);
-      const dd = only ? pad2(Math.min(31, Math.max(1, Number(only)))) : '';
-      onChange(y && m && dd ? `${y}-${m}-${dd}` : (y && m ? `${y}-${m}` : y));
+    function pad2(n: number | string) {
+      return String(n).padStart(2, '0');
     }
 
-    function switchMode(next: 'year'|'month'|'day') {
-      setMode(next);
-      // ao trocar o modo, mantenha o que já existir
-      if (next === 'year') onChange(y);
-      if (next === 'month') onChange(y && m ? `${y}-${m}` : y);
-      if (next === 'day') {
-        if (y && m && d) onChange(`${y}-${m}-${d}`);
-        else if (y && m) onChange(`${y}-${m}`);
-        else onChange(y);
+    function commit(v: string) {
+      // aqui sim avisamos o pai (e aí ele chama loadTreinos)
+      if (!v) {
+        onChange('');
+        return;
+      }
+
+      const isYear  = /^\d{4}$/.test(v);
+      const isMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+      const isDay   = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v);
+
+      if (
+        (mode === 'year'  && isYear)  ||
+        (mode === 'month' && isMonth) ||
+        (mode === 'day'   && isDay)
+      ) {
+        onChange(v);
+      } else {
+        // inválido → limpa; se quiser pode trocar por Alert
+        onChange('');
+        setLocal('');
       }
     }
 
+    function switchMode(next: 'year' | 'month' | 'day') {
+      setMode(next);
+      // não muda o filtro ainda, só muda UI
+    }
+
+    // ====== RENDER ======
     return (
       <View style={{ marginBottom: 10 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>{label}</Text>
 
-        {/* “segmented” simples */}
+        {/* “segmented buttons” Ano / Mês/Ano / Dia */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
           {(['year','month','day'] as const).map(t => (
             <TouchableOpacity
               key={t}
               onPress={() => switchMode(t)}
               style={{
-                paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8,
-                backgroundColor: mode === t ? '#18641c' : '#4A6572'
+                paddingVertical: 8,
+                paddingHorizontal: 10,
+                borderRadius: 8,
+                backgroundColor: mode === t ? '#18641c' : '#4A6572',
               }}
             >
               <Text style={{ color: '#fff', fontWeight: '600' }}>
@@ -918,51 +974,115 @@ export default function TreinosScreen() {
           ))}
         </View>
 
-        {/* Campos conforme o modo */}
+        {/* ===== Campo conforme o modo ===== */}
+
+        {/* ANO */}
         {mode === 'year' && (
           <TextInput
             style={styles.input}
             placeholder="AAAA"
             placeholderTextColor="#A0A0A0"
-            value={y}
-            onChangeText={setYear}
-            keyboardType="numeric"
+            keyboardType={Platform.OS === 'web' ? 'default' : 'numeric'}
+            value={local.slice(0, 4)}
+            onChangeText={(txt) => {
+              const only = txt.replace(/\D/g, '').slice(0, 4);
+              setLocal(only);           // atualiza “rascunho”
+
+              // 👉 assim que tiver 4 dígitos, já aplica o filtro
+              if (only.length === 4) {
+                commit(only);
+              }
+            }}
+            onBlur={() => {
+              const y = local.replace(/\D/g, '').slice(0, 4);
+              // se saiu do campo com menos de 4 dígitos, limpa
+              if (y.length === 4) commit(y);
+              else commit('');
+            }}
             maxLength={4}
           />
         )}
 
+        {/* MÊS/ANO */}
         {mode === 'month' && (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="MM"
-              placeholderTextColor="#A0A0A0"
-              value={m}
-              onChangeText={setMonth}
-              keyboardType="numeric"
-              maxLength={2}
-            />
-            <TextInput
-              style={[styles.input, { flex: 2 }]}
-              placeholder="AAAA"
-              placeholderTextColor="#A0A0A0"
-              value={y}
-              onChangeText={setYear}
-              keyboardType="numeric"
-              maxLength={4}
-            />
-          </View>
+          <>
+            {Platform.OS === 'web' ? (
+              <input
+                type="month"
+                value={local.length >= 7 ? local.slice(0, 7) : ''}
+                onChange={(e) => {
+                  const v = e.currentTarget.value; // "YYYY-MM"
+                  setLocal(v);
+                  commit(v); // já escolheu o mês → pode aplicar
+                }}
+                style={{
+                  padding: 10,
+                  border: '1px solid #4A6572',
+                  backgroundColor: '#203A4A',
+                  color: '#FFF',
+                  borderRadius: 10,
+                  height: 50,
+                  marginBottom: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              // mobile: dois inputs simples (MM e AAAA) com commit no blur
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="MM"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={local.slice(5, 7)}
+                  onChangeText={(txt) => {
+                    const only = txt.replace(/\D/g, '').slice(0, 2);
+                    const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
+                    // mantém ano já digitado
+                    const y = local.slice(0, 4);
+                    setLocal(y && mm ? `${y}-${mm}` : y);
+                  }}
+                  onBlur={() => commit(local)}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 2 }]}
+                  placeholder="AAAA"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="numeric"
+                  value={local.slice(0, 4)}
+                  onChangeText={(txt) => {
+                    const only = txt.replace(/\D/g, '').slice(0, 4);
+                    const mm = local.slice(5, 7);
+                    setLocal(only && mm ? `${only}-${mm}` : only);
+                  }}
+                  onBlur={() => commit(local)}
+                />
+              </View>
+            )}
+          </>
         )}
 
+        {/* DIA */}
         {mode === 'day' && (
           <>
             {Platform.OS === 'web' ? (
               <input
                 type="date"
-                value={value.length === 10 ? value : (y && m ? `${y}-${m}-${pad2(d || '01')}` : '')}
+                value={local.length === 10 ? local : ''}
                 onChange={(e) => {
-                  const v = e.currentTarget.value; // YYYY-MM-DD
-                  onChange(v);
+                  // só atualiza o rascunho, sem aplicar ainda
+                  const v = e.currentTarget.value; // "YYYY-MM-DD" ou ""
+                  setLocal(v);
+                }}
+                onBlur={(e) => {
+                  // ao sair do campo, aí sim aplica o filtro
+                  const v = e.currentTarget.value;
+                  if (v) {
+                    commit(v);      // ex.: "2025-11-03"
+                  } else {
+                    commit('');     // limpa filtro
+                  }
                 }}
                 style={{
                   padding: 10,
@@ -978,20 +1098,22 @@ export default function TreinosScreen() {
               />
             ) : (
               <>
+                {/* mobile fica igual, aplicando no onChange do DateTimePicker */}
                 <TouchableOpacity
                   onPress={() => setShowPicker(true)}
                   style={[styles.input, { justifyContent: 'center' }]}
                 >
-                  <Text style={{ color: value ? '#fff' : '#A0A0A0' }}>
-                    {value ? value.split('-').reverse().join('/') : 'Selecionar data'}
+                  <Text style={{ color: local ? '#fff' : '#A0A0A0' }}>
+                    {local ? local.split('-').reverse().join('/') : 'Selecionar data'}
                   </Text>
                 </TouchableOpacity>
+
                 {showPicker && (
                   <DateTimePicker
                     mode="date"
                     value={
-                      value && value.length === 10
-                        ? new Date(value + 'T00:00:00')
+                      local && local.length === 10
+                        ? new Date(local + 'T00:00:00')
                         : new Date()
                     }
                     onChange={(_, d) => {
@@ -1000,46 +1122,15 @@ export default function TreinosScreen() {
                         const yy = d.getFullYear();
                         const mm = pad2(d.getMonth() + 1);
                         const dd = pad2(d.getDate());
-                        onChange(`${yy}-${mm}-${dd}`);
+                        const v = `${yy}-${mm}-${dd}`;
+                        setLocal(v);
+                        commit(v); // aqui pode aplicar direto, UX de mobile é diferente
                       }
                     }}
                     display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   />
                 )}
               </>
-            )}
-
-            {/* Caso queira editar manualmente MM/AAAA/DIA também: */}
-            {Platform.OS !== 'web' && (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="DD"
-                  placeholderTextColor="#A0A0A0"
-                  value={d}
-                  onChangeText={setDay}
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="MM"
-                  placeholderTextColor="#A0A0A0"
-                  value={m}
-                  onChangeText={setMonth}
-                  keyboardType="numeric"
-                  maxLength={2}
-                />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="AAAA"
-                  placeholderTextColor="#A0A0A0"
-                  value={y}
-                  onChangeText={setYear}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
             )}
           </>
         )}
@@ -1324,21 +1415,32 @@ export default function TreinosScreen() {
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
 
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
           <View style={{ flex: 1 }}>
             <GranularDateInput
               label="Início"
-              value={inicioStr}
-              onChange={setInicioStr}
+              value={inicioDraft}
+              onChange={handleChangeInicioDraft}
             />
           </View>
+
           <View style={{ flex: 1 }}>
             <GranularDateInput
               label="Fim (opcional)"
-              value={fimStr}
-              onChange={setFimStr}
+              value={fimDraft}
+              onChange={handleChangeFimDraft}
             />
           </View>
+
+          {/* Botão aplicar apenas no web */}
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              onPress={aplicarFiltroDatas}
+              style={styles.btnApplyFilter}
+            >
+              <Feather name="filter" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
@@ -1372,10 +1474,6 @@ export default function TreinosScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* (opcional) feedback de granularidade */}
-        <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
-          Dicas: use "2025" para o ano, "2025-11" para o mês, ou "2025-11-03" para o dia. Preencha os dois para intervalo.
-        </Text>
       </View>
 
       {loading ? (
@@ -1607,7 +1705,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20, marginBottom: 6, marginHorizontal: 8
   },
   logo: { fontSize: 32, fontWeight: '800', color: '#FFF' },
-  h1: { color: '#FFF', fontWeight: '700', fontSize: 22, marginBottom: 12, textAlign: 'center' },
+  h1: { color: '#FFF', fontWeight: '700', fontSize: 22, marginTop: 12, marginBottom: 12, textAlign: 'center' },
   input: {
     height: 50, backgroundColor: '#203A4A', borderRadius: 10, paddingHorizontal: 12,
     color: '#FFF', borderWidth: 1, borderColor: '#4A6572', marginBottom: 10
@@ -1628,10 +1726,19 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center' 
   },
   btnNeutral: { 
-    backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
+    flexDirection: 'row', backgroundColor: '#4A6572', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center'
   },
   btnText: { color: '#fff', fontWeight: 'bold' },
+  btnApplyFilter: {
+    backgroundColor: '#18641c',
+    height: 50,
+    width: 50,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
   box: {
     backgroundColor: '#1E2F47', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#3A506B', marginBottom: 12
