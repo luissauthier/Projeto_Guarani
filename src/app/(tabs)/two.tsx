@@ -1289,28 +1289,26 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Nasc.</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Categoria</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 140 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 240 }]}>E-mail</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Responsável</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.nasc]}>Nasc.</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.cat]}>Categoria</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.email]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.resp]}>Responsável</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>
-                  {formatPgDateOnly(item.data_nascimento)}
-                </Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, JOG_COLS.nome]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.nasc]}>{formatPgDateOnly(item.data_nascimento)}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.cat]}>{getCategoriaAno(item) ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.status]}>{item.status}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.tel]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.email]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.resp]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
+                <View style={[tableStyles.cell, JOG_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1338,22 +1336,23 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Tipo</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 260 }]}>E-mail</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.tipo]}>Tipo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.email]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]}>{COL_LABEL[item.type_user!]}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, COLAB_COLS.nome]} numberOfLines={1}>{item.full_name}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.tipo]}>{COL_LABEL[item.type_user!]}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.status]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.tel]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.email]} numberOfLines={1}>{item.email ?? '-'}</Text>
+
+                <View style={[tableStyles.cell, COLAB_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1381,22 +1380,26 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 150 }]}>Doador</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Termo</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.doador]}>Doador</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.termo]}>Termo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 150 }]}>{item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}</Text>
-                <Text style={[tableStyles.cell, { width: 100 }]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
-                <Text style={[tableStyles.cell, { width: 100 }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, PARC_COLS.nome]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.tel]}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.doador]}>
+                  {item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}
+                </Text>
+                <Text style={[tableStyles.cell, PARC_COLS.termo]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.status]}>
+                  {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                </Text>
+                <View style={[tableStyles.cell, PARC_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1986,12 +1989,48 @@ const tableStyles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     color: '#E0E0E0',
+    flexShrink: 1,   // texto pode encolher
   },
   headerCell: {
     fontWeight: '700',
     color: '#FFF',
   },
 });
+
+const col = (grow: number, minWidth: number) => ({
+  flexBasis: 0,     // permite dividir proporcionalmente
+  flexGrow: grow,   // peso da coluna
+  minWidth,         // limite mínimo (pra não esmagar)
+});
+
+const JOG_COLS = {
+  nome: col(2.2, 180),
+  nasc: col(1.0, 120),
+  cat:  col(0.9, 120),
+  status: col(1.1, 140),
+  tel: col(1.2, 160),
+  email: col(2.0, 240),
+  resp: col(1.6, 220),
+  acoes: col(1.0, 180),
+};
+
+const COLAB_COLS = {
+  nome: col(2.2, 220),
+  tipo: col(1.2, 160),
+  status: col(0.9, 120),
+  tel: col(1.2, 160),
+  email: col(2.0, 260),
+  acoes: col(1.0, 180),
+};
+
+const PARC_COLS = {
+  nome: col(2.0, 180),
+  tel: col(1.2, 140),
+  doador: col(1.3, 150),
+  termo: col(0.8, 100),
+  status: col(0.8, 100),
+  acoes: col(1.0, 180),
+};
 
 const styles = StyleSheet.create({
   container: { flex:1, backgroundColor:'#0A1931', paddingHorizontal:16 },
