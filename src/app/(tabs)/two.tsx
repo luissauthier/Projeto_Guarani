@@ -56,6 +56,22 @@ function WebModal({
   );
 }
 
+function TableWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        contentContainerStyle={{ minWidth: '100%', flexGrow: 1 }}
+      >
+        <View style={{ minWidth: '100%', flexGrow: 1 }}>
+          {children}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 function todayYmd() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -1071,6 +1087,14 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         </TouchableOpacity>
       </View> */}
 
+      <View
+        style={
+          tab === 'jogadores' || tab === 'colaboradores' || tab === 'parceiros'
+            ? styles.containerInnerFull
+            : styles.containerInner
+        }
+      >
+
       {/* Banner de debug com timer e botão de fechar (erros/ações) */}
       {debugMsg ? (
         <View style={styles.debugBanner}>
@@ -1257,139 +1281,137 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
       )}
 
       {!loading && tab === 'jogadores' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
-          <View style={{ width: 180 + 120 + 120 + 140 + 160 + 240 + 220 + 180 }}>
-            <FlatList
-              data={jogadoresFiltrados}
-              keyExtractor={(i) => i.id}
-              contentContainerStyle={{ paddingBottom: 40 }}
-              ListHeaderComponent={
-                <View style={tableStyles.headerRow}>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Nasc.</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Categoria</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 140 }]}>Status</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 240 }]}>E-mail</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Responsável</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+        <TableWrapper>
+          <FlatList
+            data={jogadoresFiltrados}
+            keyExtractor={(i) => i.id}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+            ListHeaderComponent={
+              <View style={tableStyles.headerRow}>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Nasc.</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Categoria</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 140 }]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 240 }]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Responsável</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+              </View>
+            }
+            renderItem={({ item, index }) => (
+              <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, { width: 120 }]}>
+                  {formatPgDateOnly(item.data_nascimento)}
+                </Text>
+                <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
+                <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
+                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
+                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'jogador')}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
                 </View>
-              }
-              renderItem={({ item, index }) => (
-                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                  <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>
-                    {formatPgDateOnly(item.data_nascimento)}
-                  </Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
-                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
-                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
-                      <Text style={styles.btnText}>Editar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'jogador')}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.btnText}>Excluir</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
             />
-          </View>
-        </ScrollView>
+        </TableWrapper>
       )}
 
       {!loading && tab === 'colaboradores' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
-          <View style={{ width: 220 + 160 + 120 + 160 + 260 + 180 }}>
-            <FlatList
-              data={colaboradoresFiltrados}
-              keyExtractor={(i) => i.id}
-              contentContainerStyle={{ paddingBottom: 40 }}
-              ListHeaderComponent={
-                <View style={tableStyles.headerRow}>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Nome</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Tipo</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Status</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 260 }]}>E-mail</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+        <TableWrapper>
+          <FlatList
+            data={colaboradoresFiltrados}
+            keyExtractor={(i) => i.id}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+            ListHeaderComponent={
+              <View style={tableStyles.headerRow}>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Tipo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 260 }]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+              </View>
+            }
+            renderItem={({ item, index }) => (
+              <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
+                <Text style={[tableStyles.cell, { width: 160 }]}>{COL_LABEL[item.type_user!]}</Text>
+                <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
+                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'colaborador')}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
                 </View>
-              }
-              renderItem={({ item, index }) => (
-                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                  <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]}>{COL_LABEL[item.type_user!]}</Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
-                  <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
-                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
-                      <Text style={styles.btnText}>Editar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'colaborador')}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Text style={styles.btnText}>Excluir</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              ListEmptyComponent={<Text style={styles.empty}>Nenhum Colaborador encontrado.</Text>}
-            />
-          </View>
-        </ScrollView>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
+          />
+        </TableWrapper>
       )}
 
       {!loading && tab === 'parceiros' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginBottom: 12 }}>
-          <View style={{ width: 180 + 120 + 150 + 100 + 100 + 180 }}>
-            <FlatList
-              data={parceirosFiltrados}
-              keyExtractor={(i) => i.id}
-              ListHeaderComponent={
-                <View style={tableStyles.headerRow}>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Telefone</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 150 }]}>Doador</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Termo</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Status</Text>
-                  <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+        <TableWrapper>
+          <FlatList
+            data={parceirosFiltrados}
+            keyExtractor={(i) => i.id}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+            ListHeaderComponent={
+              <View style={tableStyles.headerRow}>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 150 }]}>Doador</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Termo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+              </View>
+            }
+            renderItem={({ item, index }) => (
+              <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
+                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, { width: 120 }]}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, { width: 150 }]}>{item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}</Text>
+                <Text style={[tableStyles.cell, { width: 100 }]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
+                <Text style={[tableStyles.cell, { width: 100 }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
+                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'parceiro')}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
                 </View>
-              }
-              renderItem={({ item, index }) => (
-                <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                  <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                  <Text style={[tableStyles.cell, { width: 120 }]}>{item.telefone ?? '-'}</Text>
-                  <Text style={[tableStyles.cell, { width: 150 }]}>{item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}</Text>
-                  <Text style={[tableStyles.cell, { width: 100 }]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
-                  <Text style={[tableStyles.cell, { width: 100 }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
-                  <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
-                    <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
-                      <Text style={styles.btnText}>Editar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.btnDanger}
-                      onPress={() => openDeleteConfirm(item, 'parceiro')}
-                    >
-                      <Text style={styles.btnText}>Excluir</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
-            />
-          </View>
-        </ScrollView>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
+          />
+        </TableWrapper>
       )}
 
   {/* MODAL JOGADOR */}
@@ -1938,6 +1960,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
       </View>
     </View>
   </Modal>
+  </View>
     </AppSafeArea>
   );
 }
@@ -1972,6 +1995,8 @@ const tableStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex:1, backgroundColor:'#0A1931', paddingHorizontal:16 },
+  containerInner: { flex: 1, paddingHorizontal: 16 },
+  containerInnerFull: { flex: 1, paddingHorizontal: 0 }, // tabela full width
   header: { flexDirection:'row', justifyContent:'space-between', alignItems:'center',
     paddingVertical:20, marginBottom:6, marginHorizontal:8 },
   logo: { fontSize:32, fontWeight:'800', color:'#FFF' },

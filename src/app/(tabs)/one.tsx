@@ -758,7 +758,7 @@ export default function TreinosScreen() {
       let query = supabase
         .from('treinos')
         .select('*')
-        .order('data_hora', { ascending: true });
+        .order('data_hora', { ascending: false });
 
       if (range?.startISO) {
         query = query.gte('data_hora', range.startISO);
