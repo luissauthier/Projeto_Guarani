@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "projeto03",
-    "slug": "projeto03",
+    "owner": "projeto-guarani",
+    "name": "App de Gestão Projeto Guarani",
+    "slug": "gestao-projeto-guarani",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -22,7 +23,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.gabriel_link.projeto03"
+      "package": "com.projetoguarani.gestaoprojetoguarani"
     },
     "web": {
       "bundler": "metro",
@@ -38,7 +39,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "937823bf-2d77-4d0d-998d-0e283665431d"
+        "projectId": "74294225-5a7d-45b8-8728-c1d287572401"
       }
     }
   }
