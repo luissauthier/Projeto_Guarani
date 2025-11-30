@@ -15,6 +15,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { TextInputMask } from 'react-native-masked-text';
+import { Pressable } from 'react-native';
 
 const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
 const ModalSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
@@ -54,6 +55,33 @@ function WebModal({
     <View style={styles.modalOverlay}>
       <View style={styles.modalContent}>{children}</View>
     </View>
+  );
+}
+
+function FiltersModal({
+  visible,
+  children,
+  onClose,
+}: {
+  visible: boolean;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
+      onRequestClose={onClose}
+    >
+      {/* Overlay clicável */}
+      <Pressable style={styles.filtersOverlay} onPress={onClose}>
+        {/* Painel NÃO clicável (bloqueia o clique de "vazar" pro overlay) */}
+        <Pressable style={styles.filtersPanel} onPress={() => {}}>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -378,6 +406,106 @@ function formatLocalForInput(iso: string) {
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [colaboradores, setcolaboradores] = useState<UserRow[]>([]);
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
+
+    // modal de filtros
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // drafts (rascunho) dos filtros
+  const [dYearFrom, setDYearFrom] = useState(yearFrom);
+  const [dYearTo, setDYearTo] = useState(yearTo);
+  const [dFiltroStatus, setDFiltroStatus] = useState(filtroStatus);
+  const [dFiltroGuarani, setDFiltroGuarani] = useState(filtroGuarani);
+  const [dFiltroTermo, setDFiltroTermo] = useState(filtroTermo);
+
+  const [dFiltroTipoCol, setDFiltroTipoCol] = useState(filtroTipoCol);
+  const [dFiltroAtivo, setDFiltroAtivo] = useState(filtroAtivo);
+
+  const [dFiltroStatusParceiro, setDFiltroStatusParceiro] = useState(filtroStatusParceiro);
+  const [dFiltroTipoDoador, setDFiltroTipoDoador] = useState(filtroTipoDoador);
+
+  function applyFilters() {
+    // Jogadores
+    setYearFrom(dYearFrom);
+    setYearTo(dYearTo);
+    setFiltroStatus(dFiltroStatus as any);
+    setFiltroGuarani(dFiltroGuarani as any);
+    setFiltroTermo(dFiltroTermo as any);
+
+    // Colaboradores
+    setFiltroTipoCol(dFiltroTipoCol as any);
+    setFiltroAtivo(dFiltroAtivo as any);
+
+    // Parceiros
+    setFiltroStatusParceiro(dFiltroStatusParceiro as any);
+    setFiltroTipoDoador(dFiltroTipoDoador as any);
+
+    setFiltersOpen(false);
+  }
+
+  function cancelFilters() {
+    // não altera os filtros reais
+    setFiltersOpen(false);
+  }
+
+  // sempre que abrir o modal, sincroniza draft com o que está aplicado
+  useEffect(() => {
+    if (!filtersOpen) return;
+
+    setDYearFrom(yearFrom);
+    setDYearTo(yearTo);
+    setDFiltroStatus(filtroStatus);
+    setDFiltroGuarani(filtroGuarani);
+    setDFiltroTermo(filtroTermo);
+
+    setDFiltroTipoCol(filtroTipoCol);
+    setDFiltroAtivo(filtroAtivo);
+
+    setDFiltroStatusParceiro(filtroStatusParceiro);
+    setDFiltroTipoDoador(filtroTipoDoador);
+  }, [filtersOpen]);
+
+  function clearFilters() {
+    // defaults = sem filtro
+    const defaults = {
+      yearFrom: '',
+      yearTo: '',
+      status: 'todos' as any,
+      guarani: 'todos' as any,
+      termo: 'todos' as any,
+      tipoCol: 'todos' as any,
+      ativo: 'todos' as any,
+      statusParceiro: 'todos' as any,
+      tipoDoador: 'todos' as any,
+    };
+
+    // reais
+    setYearFrom(defaults.yearFrom);
+    setYearTo(defaults.yearTo);
+    setFiltroStatus(defaults.status);
+    setFiltroGuarani(defaults.guarani);
+    setFiltroTermo(defaults.termo);
+
+    setFiltroTipoCol(defaults.tipoCol);
+    setFiltroAtivo(defaults.ativo);
+
+    setFiltroStatusParceiro(defaults.statusParceiro);
+    setFiltroTipoDoador(defaults.tipoDoador);
+
+    // drafts
+    setDYearFrom(defaults.yearFrom);
+    setDYearTo(defaults.yearTo);
+    setDFiltroStatus(defaults.status);
+    setDFiltroGuarani(defaults.guarani);
+    setDFiltroTermo(defaults.termo);
+
+    setDFiltroTipoCol(defaults.tipoCol);
+    setDFiltroAtivo(defaults.ativo);
+
+    setDFiltroStatusParceiro(defaults.statusParceiro);
+    setDFiltroTipoDoador(defaults.tipoDoador);
+
+    setFiltersOpen(false);
+  }
 
   const anosDisponiveis = useMemo(() => {
     const anos = new Set<number>();
@@ -1123,130 +1251,23 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
 
       {/* SEARCH + FILTERS */}
       <View style={styles.filtersBox}>
-        <TextInput
-          placeholder="Buscar por nome, telefone, email, etc."
-          placeholderTextColor="#A0A0A0"
-          style={styles.input}
-          value={search}
-          onChangeText={setSearch}
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            placeholder="Buscar por nome, telefone, email, etc."
+            placeholderTextColor="#A0A0A0"
+            style={[styles.input, styles.searchInput]}
+            value={search}
+            onChangeText={setSearch}
+          />
 
-        {/* VVV LÓGICA DE FILTRO CORRIGIDA VVV */}
-
-        {/* Filtros de Jogadores (só aparece na aba 'jogadores') */}
-        {tab === 'jogadores' && (
-          <View style={styles.rowWrap}>
-            {/* Categoria (ano) — flexível */}
-            <View style={styles.colCategory}>
-              <Text style={styles.label}>Categoria (ano)</Text>
-              <View style={{ flexDirection: 'row', columnGap: 10 }}>
-                <TextInput
-                  style={[styles.input, styles.shrink, { flex: 1 }]}
-                  placeholder="Ano de (ex: 2008)"
-                  placeholderTextColor="#A0A0A0"
-                  keyboardType="numeric"
-                  value={yearFrom}
-                  onChangeText={handleYearFrom}
-                />
-                <TextInput
-                  style={[styles.input, styles.shrink, { flex: 1 }]}
-                  placeholder="Ano até (ex: 2012)"
-                  placeholderTextColor="#A0A0A0"
-                  keyboardType="numeric"
-                  value={yearTo}
-                  onChangeText={handleYearTo}
-                />
-              </View>
-            </View>
-
-            {/* Status — compacto, vem por último */}
-            <View style={styles.colStatus}>
-              <Text style={styles.label}>Status</Text>
-              <Picker
-                selectedValue={filtroStatus}
-                onValueChange={(v)=>setFiltroStatus(v as any)}
-                style={[styles.picker, styles.shrink]}
-              >
-                <Picker.Item label="Todos" value="todos" />
-                {STATUS_OPTIONS.map(s => <Picker.Item key={s} label={s} value={s} />)}
-              </Picker>
-            </View>
-            <View style={styles.colStatus}>
-              <Text style={styles.label}>Jogador do Guarani</Text>
-              <Picker
-                selectedValue={filtroGuarani}
-                onValueChange={(v)=>setFiltroGuarani(v as any)}
-                style={[styles.picker, styles.shrink]}
-              >
-                <Picker.Item label="Todos" value="todos" />
-                <Picker.Item label="Sim" value="sim" />
-                <Picker.Item label="Não" value="nao" />
-              </Picker>
-            </View>
-            <View style={styles.colStatus}>
-              <Text style={styles.label}>Termo assinado</Text>
-              <Picker
-                selectedValue={filtroTermo}
-                onValueChange={(v)=>setFiltroTermo(v as any)}
-                style={[styles.picker, styles.shrink]}
-              >
-                <Picker.Item label="Todos" value="todos" />
-                <Picker.Item label="Sim" value="sim" />
-                <Picker.Item label="Não" value="nao" />
-              </Picker>
-            </View>
-          </View>
-        )}
-
-        {/* Filtros de Colaborador (só aparece na aba 'colaboradores') */}
-        {tab === 'colaboradores' && (
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Tipo</Text>
-              <Picker
-                selectedValue={filtroTipoCol}
-                onValueChange={(v)=>setFiltroTipoCol(v as any)}
-                style={styles.picker}
-              >
-                <Picker.Item label="Todos" value="todos" />
-                {COL_TIPOS.map(t => (
-                  <Picker.Item key={t} label={COL_LABEL[t]} value={t} />
-                ))}
-              </Picker>
-            </View>
-            <View style={styles.col}>
-              <Text style={styles.label}>Status</Text>
-              <Picker selectedValue={filtroAtivo} onValueChange={(v)=>setFiltroAtivo(v as any)} style={styles.picker}>
-                <Picker.Item label="Todos" value="todos" />
-                <Picker.Item label="Ativos" value="ativos" />
-                <Picker.Item label="Inativos" value="inativos" />
-              </Picker>
-            </View>
-          </View>
-        )}
-
-        {/* Filtros de Parceiros (só aparece na aba 'parceiros') */}
-        {tab === 'parceiros' && (
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Status</Text>
-              <Picker selectedValue={filtroStatusParceiro} onValueChange={(v)=>setFiltroStatusParceiro(v as any)} style={styles.picker}>
-                <Picker.Item label="Todos" value="todos" />
-                {STATUS_PARCEIRO_OPTIONS.map(s => <Picker.Item key={s} label={s.charAt(0).toUpperCase() + s.slice(1)} value={s} />)}
-              </Picker>
-            </View>
-            <View style={styles.col}>
-              <Text style={styles.label}>Tipo Doador</Text>
-              <Picker selectedValue={filtroTipoDoador} onValueChange={(v)=>setFiltroTipoDoador(v as any)} style={styles.picker}>
-                <Picker.Item label="Todos" value="todos" />
-                {TIPO_DOADOR_OPTIONS.map(t => <Picker.Item key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} value={t} />)}
-              </Picker>
-            </View>
-          </View>
-        )}
-        
-        {/* ^^^ FIM DA LÓGICA DE FILTRO CORRIGIDA ^^^ */}
-
+          <TouchableOpacity
+            style={[styles.btnNeutral, styles.filterBtnInline]}
+            onPress={() => setFiltersOpen(true)}
+          >
+            <Feather name="filter" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Filtrar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* AÇÕES */}
@@ -1290,28 +1311,26 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Nasc.</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Categoria</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 140 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 240 }]}>E-mail</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Responsável</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.nasc]}>Nasc.</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.cat]}>Categoria</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.email]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.resp]}>Responsável</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, JOG_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>
-                  {formatPgDateOnly(item.data_nascimento)}
-                </Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{getCategoriaAno(item) ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 140 }]}>{item.status}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 240 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, JOG_COLS.nome]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.nasc]}>{formatPgDateOnly(item.data_nascimento)}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.cat]}>{getCategoriaAno(item) ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.status]}>{item.status}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.tel]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.email]} numberOfLines={1}>{item.email ?? '-'}</Text>
+                <Text style={[tableStyles.cell, JOG_COLS.resp]} numberOfLines={1}>{item.responsavel_nome ?? '-'}</Text>
+                <View style={[tableStyles.cell, JOG_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1339,22 +1358,23 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 220 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Tipo</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 160 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 260 }]}>E-mail</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.tipo]}>Tipo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.email]}>E-mail</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, COLAB_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 220 }]} numberOfLines={1}>{item.full_name}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]}>{COL_LABEL[item.type_user!]}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
-                <Text style={[tableStyles.cell, { width: 160 }]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 260 }]} numberOfLines={1}>{item.email ?? '-'}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, COLAB_COLS.nome]} numberOfLines={1}>{item.full_name}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.tipo]}>{COL_LABEL[item.type_user!]}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.status]}>{item.ativo ? 'ativo' : 'inativo'}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.tel]} numberOfLines={1}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, COLAB_COLS.email]} numberOfLines={1}>{item.email ?? '-'}</Text>
+
+                <View style={[tableStyles.cell, COLAB_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1382,22 +1402,26 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
             ListHeaderComponent={
               <View style={tableStyles.headerRow}>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Nome</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 120 }]}>Telefone</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 150 }]}>Doador</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Termo</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 100 }]}>Status</Text>
-                <Text style={[tableStyles.cell, tableStyles.headerCell, { width: 180 }]}>Ações</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.nome]}>Nome</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.tel]}>Telefone</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.doador]}>Doador</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.termo]}>Termo</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.status]}>Status</Text>
+                <Text style={[tableStyles.cell, tableStyles.headerCell, PARC_COLS.acoes]}>Ações</Text>
               </View>
             }
             renderItem={({ item, index }) => (
               <View style={[tableStyles.bodyRow, index % 2 === 1 && { backgroundColor: '#223653' }]}>
-                <Text style={[tableStyles.cell, { width: 180 }]} numberOfLines={1}>{item.nome}</Text>
-                <Text style={[tableStyles.cell, { width: 120 }]}>{item.telefone ?? '-'}</Text>
-                <Text style={[tableStyles.cell, { width: 150 }]}>{item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}</Text>
-                <Text style={[tableStyles.cell, { width: 100 }]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
-                <Text style={[tableStyles.cell, { width: 100 }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
-                <View style={[tableStyles.cell, { width: 180, flexDirection: 'row', gap: 8 }]}>
+                <Text style={[tableStyles.cell, PARC_COLS.nome]} numberOfLines={1}>{item.nome}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.tel]}>{item.telefone ?? '-'}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.doador]}>
+                  {item.tipo_doador.charAt(0).toUpperCase() + item.tipo_doador.slice(1)}
+                </Text>
+                <Text style={[tableStyles.cell, PARC_COLS.termo]}>{item.termo_assinado ? 'Sim' : 'Não'}</Text>
+                <Text style={[tableStyles.cell, PARC_COLS.status]}>
+                  {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                </Text>
+                <View style={[tableStyles.cell, PARC_COLS.acoes, { flexDirection:'row', gap:8 }]}>
                   <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
                     <Text style={styles.btnText}>Editar</Text>
                   </TouchableOpacity>
@@ -1970,6 +1994,163 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         </SafeAreaView>
       </Modal>
 
+      <FiltersModal visible={filtersOpen} onClose={cancelFilters}>
+        <AppSafeArea style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator>
+            <Text style={styles.h1}>Filtros</Text>
+
+            {/* ======= Jogadores ======= */}
+            {tab === 'jogadores' && (
+              <View style={styles.filterGrid}>
+                {/* Categoria (full) */}
+                <View style={styles.filterFull}>
+                  <Text style={styles.label}>Categoria (ano)</Text>
+                  <View style={{ flexDirection: 'row', columnGap: 10 }}>
+                    <TextInput
+                      style={[styles.input, styles.shrink, { flex: 1 }]}
+                      placeholder="Ano de (ex: 2008)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={dYearFrom}
+                      onChangeText={(v) => setDYearFrom(onlyDigits(v))}
+                    />
+                    <TextInput
+                      style={[styles.input, styles.shrink, { flex: 1 }]}
+                      placeholder="Ano até (ex: 2012)"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={dYearTo}
+                      onChangeText={(v) => setDYearTo(onlyDigits(v))}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Status</Text>
+                  <Picker
+                    selectedValue={dFiltroStatus}
+                    onValueChange={(v) => setDFiltroStatus(v as any)}
+                    style={[styles.picker, styles.shrink]}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    {STATUS_OPTIONS.map(s => (
+                      <Picker.Item key={s} label={s} value={s} />
+                    ))}
+                  </Picker>
+                </View>
+
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Jogador do Guarani</Text>
+                  <Picker
+                    selectedValue={dFiltroGuarani}
+                    onValueChange={(v) => setDFiltroGuarani(v as any)}
+                    style={[styles.picker, styles.shrink]}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    <Picker.Item label="Sim" value="sim" />
+                    <Picker.Item label="Não" value="nao" />
+                  </Picker>
+                </View>
+
+                {/* Termo (full) — evita “buraco” visual */}
+                <View style={styles.filterFull}>
+                  <Text style={styles.label}>Termo assinado</Text>
+                  <Picker
+                    selectedValue={dFiltroTermo}
+                    onValueChange={(v) => setDFiltroTermo(v as any)}
+                    style={[styles.picker, styles.shrink]}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    <Picker.Item label="Sim" value="sim" />
+                    <Picker.Item label="Não" value="nao" />
+                  </Picker>
+                </View>
+              </View>
+            )}
+
+            {/* ======= Colaboradores ======= */}
+            {tab === 'colaboradores' && (
+              <View style={styles.filterGrid}>
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Tipo</Text>
+                  <Picker
+                    selectedValue={dFiltroTipoCol}
+                    onValueChange={(v) => setDFiltroTipoCol(v as any)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    {COL_TIPOS.map(t => (
+                      <Picker.Item key={t} label={COL_LABEL[t]} value={t} />
+                    ))}
+                  </Picker>
+                </View>
+
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Status</Text>
+                  <Picker
+                    selectedValue={dFiltroAtivo}
+                    onValueChange={(v) => setDFiltroAtivo(v as any)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    <Picker.Item label="Ativos" value="ativos" />
+                    <Picker.Item label="Inativos" value="inativos" />
+                  </Picker>
+                </View>
+              </View>
+            )}
+
+            {/* ======= Parceiros ======= */}
+            {tab === 'parceiros' && (
+              <View style={styles.filterGrid}>
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Status</Text>
+                  <Picker
+                    selectedValue={dFiltroStatusParceiro}
+                    onValueChange={(v) => setDFiltroStatusParceiro(v as any)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    {STATUS_PARCEIRO_OPTIONS.map(s => (
+                      <Picker.Item key={s} label={s[0].toUpperCase() + s.slice(1)} value={s} />
+                    ))}
+                  </Picker>
+                </View>
+
+                <View style={styles.filterHalf}>
+                  <Text style={styles.label}>Tipo Doador</Text>
+                  <Picker
+                    selectedValue={dFiltroTipoDoador}
+                    onValueChange={(v) => setDFiltroTipoDoador(v as any)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Todos" value="todos" />
+                    {TIPO_DOADOR_OPTIONS.map(t => (
+                      <Picker.Item key={t} label={t[0].toUpperCase() + t.slice(1)} value={t} />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+            )}
+
+            {/* Ações */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={applyFilters}>
+                <Text style={styles.btnText}>Aplicar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.btnNeutral, { flex: 1 }]} onPress={cancelFilters}>
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Limpar */}
+            <TouchableOpacity style={[styles.btnDanger, { marginTop: 10 }]} onPress={clearFilters}>
+              <Text style={styles.btnText}>Limpar filtros</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </AppSafeArea>
+      </FiltersModal>
+
   {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
   <Modal
     visible={isDeleteModalVisible}
@@ -2024,12 +2205,48 @@ const tableStyles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     color: '#E0E0E0',
+    flexShrink: 1,   // texto pode encolher
   },
   headerCell: {
     fontWeight: '700',
     color: '#FFF',
   },
 });
+
+const col = (grow: number, minWidth: number) => ({
+  flexBasis: 0,     // permite dividir proporcionalmente
+  flexGrow: grow,   // peso da coluna
+  minWidth,         // limite mínimo (pra não esmagar)
+});
+
+const JOG_COLS = {
+  nome: col(2.2, 180),
+  nasc: col(1.0, 120),
+  cat:  col(0.9, 120),
+  status: col(1.1, 140),
+  tel: col(1.2, 160),
+  email: col(2.0, 240),
+  resp: col(1.6, 220),
+  acoes: col(1.0, 180),
+};
+
+const COLAB_COLS = {
+  nome: col(2.2, 220),
+  tipo: col(1.2, 160),
+  status: col(0.9, 120),
+  tel: col(1.2, 160),
+  email: col(2.0, 260),
+  acoes: col(1.0, 180),
+};
+
+const PARC_COLS = {
+  nome: col(2.0, 180),
+  tel: col(1.2, 140),
+  doador: col(1.3, 150),
+  termo: col(0.8, 100),
+  status: col(0.8, 100),
+  acoes: col(1.0, 180),
+};
 
 const styles = StyleSheet.create({
   container: { flex:1, backgroundColor:'#0A1931', paddingHorizontal:16 },
@@ -2172,5 +2389,58 @@ const styles = StyleSheet.create({
     marginTop: -6,
     marginBottom: 10,
     fontSize: 12,
+  },
+  filtersModal: {
+    flex: 1,
+    backgroundColor: '#0A1931',
+    width: Platform.OS === 'web' ? 520 : '100%',
+    maxHeight: Platform.OS === 'web' ? '85%' : '100%',
+    borderRadius: Platform.OS === 'web' ? 12 : 0,
+  },
+  filtersOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+    padding: 16,
+  },
+
+  filtersPanel: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 560 : '100%',
+    maxHeight: Platform.OS === 'web' ? '85%' : '90%',
+    backgroundColor: '#0A1931',
+    borderRadius: Platform.OS === 'web' ? 12 : 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#3A506B',
+    alignSelf: 'center',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    marginBottom: 0, // ✅ remove a margem que empurrava o botão pra baixo
+  },
+  filterBtnInline: {
+    height: 50,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+  },
+  filterGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+    columnGap: 10,
+  },
+  filterHalf: {
+    width: Platform.OS === 'web' ? '48%' : '100%',
+  },
+
+  filterFull: {
+    width: '100%',
   },
 });
