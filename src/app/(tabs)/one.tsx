@@ -1109,27 +1109,47 @@ export default function TreinosScreen() {
                 </TouchableOpacity>
 
                 {showPicker && (
-                  <DateTimePicker
-                    mode="date"
-                    value={
-                      local && local.length === 10
-                        ? new Date(local + 'T00:00:00')
-                        : new Date()
-                    }
-                    onChange={(_, d) => {
-                      setShowPicker(false);
-                      if (d) {
-                        const yy = d.getFullYear();
-                        const mm = pad2(d.getMonth() + 1);
-                        const dd = pad2(d.getDate());
-                        const v = `${yy}-${mm}-${dd}`;
-                        setLocal(v);
-                        commit(v); // aqui pode aplicar direto, UX de mobile é diferente
-                      }
-                    }}
-                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                  />
-                )}
+          <DateTimePicker
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            
+            // 1. VALOR SEGURO: Evita o crash se 'local' estiver vazio ou inválido
+            value={(() => {
+              try {
+                return (local && local.length === 10) 
+                  ? new Date(local + 'T00:00:00') 
+                  : new Date();
+              } catch {
+                return new Date();
+              }
+            })()}
+            
+            onChange={(event, selectedDate) => {
+              // 2. FECHAR NO ANDROID: Deve ser a primeira coisa a fazer
+              if (Platform.OS === 'android') {
+                setShowPicker(false);
+              }
+
+              // 3. VERIFICA CANCELAMENTO: Se cancelou ou não tem data, para tudo.
+              if (event.type === 'dismissed' || !selectedDate) {
+                // Se for iOS e não for inline, talvez precise fechar aqui também, 
+                // mas no seu código parece ser inline no iOS.
+                return;
+              }
+
+              // 4. PROCESSA A DATA (Se chegou aqui, é válida)
+              const d = selectedDate;
+              const yy = d.getFullYear();
+              // Certifique-se que a função pad2 existe no seu código, senão troque por String().padStart...
+              const mm = pad2(d.getMonth() + 1); 
+              const dd = pad2(d.getDate());
+              const v = `${yy}-${mm}-${dd}`;
+              
+              setLocal(v);
+              commit(v);
+            }}
+          />
+        )}
               </>
             )}
           </>

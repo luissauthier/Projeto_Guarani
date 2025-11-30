@@ -31,6 +31,7 @@ function debugSbError(ctx: string, error: any) {
   console.log('[SUPABASE ERROR]', ctx, error);
   return msg;
 }
+const [showDatePicker, setShowDatePicker] = useState(false);
 
 function WebModal({
   visible,
@@ -1447,8 +1448,10 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         {Platform.OS === 'web' ? (
           <input
             type="date"
-            value={(formJog.data_nascimento ?? todayYmd())}
-            onChange={(e) => setFormJog(s => ({ ...s, data_nascimento: e.currentTarget.value }))}
+            value={formJog.data_nascimento ?? todayYmd()}
+            onChange={(e) =>
+              setFormJog((s) => ({ ...s, data_nascimento: e.currentTarget.value }))
+            }
             style={{
               padding: 10,
               border: '1px solid #4A6572',
@@ -1462,22 +1465,57 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             }}
           />
         ) : (
-          <DateTimePicker
-            mode="date"
-            value={
-              formJog.data_nascimento
-                ? new Date(formJog.data_nascimento + 'T00:00:00')
-                : new Date()
-            }
-            onChange={(_, d) => {
-              if (d) {
-                const pad = (n: number) => String(n).padStart(2, '0');
-                const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-                setFormJog(s => ({ ...s, data_nascimento: v }));
-              }
-            }}
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          />
+          <View>
+            {/* NO ANDROID: MOSTRA UM BOTÃO PARA ABRIR O CALENDÁRIO */}
+            {Platform.OS === 'android' && (
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                style={[styles.input, { justifyContent: 'center' }]}
+              >
+                <Text style={{ color: formJog.data_nascimento ? '#FFF' : '#A0A0A0' }}>
+                  {formJog.data_nascimento
+                    ? new Date(formJog.data_nascimento + 'T00:00:00').toLocaleDateString('pt-BR')
+                    : 'Selecionar Data de Nascimento'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* O CALENDÁRIO: 
+                - No iOS aparece sempre (inline).
+                - No Android só aparece se clicou no botão (showDatePicker).
+            */}
+            {(Platform.OS === 'ios' || showDatePicker) && (
+              <DateTimePicker
+                mode="date"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                value={(() => {
+                  try {
+                    return formJog.data_nascimento
+                      ? new Date(formJog.data_nascimento + 'T00:00:00')
+                      : new Date();
+                  } catch {
+                    return new Date();
+                  }
+                })()}
+                onChange={(event, selectedDate) => {
+                  // 1. No Android, fecha o modal imediatamente
+                  if (Platform.OS === 'android') {
+                    setShowDatePicker(false);
+                  }
+
+                  // 2. Se cancelou ou não tem data, não faz nada
+                  if (event.type === 'dismissed' || !selectedDate) return;
+
+                  // 3. Formata e salva (YYYY-MM-DD)
+                  const d = selectedDate;
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  const v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+                  setFormJog((s) => ({ ...s, data_nascimento: v }));
+                }}
+              />
+            )}
+          </View>
         )}
 
         {(idade !== null || categoriaAno !== null) && (
