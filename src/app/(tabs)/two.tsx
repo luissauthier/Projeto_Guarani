@@ -58,29 +58,23 @@ function WebModal({
   );
 }
 
-function FiltersModal({
-  visible,
-  children,
-  onClose,
-}: {
-  visible: boolean;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
+function FiltersModal({ visible, onClose, children }: any) {
   return (
     <Modal
       visible={visible}
-      transparent
-      animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
-      onRequestClose={onClose}
+      transparent={true} // OBRIGATÓRIO para ver o fundo escuro
+      animationType="fade" // 'slide' ou 'fade'
+      onRequestClose={onClose} // Botão voltar do Android
     >
-      {/* Overlay clicável */}
-      <Pressable style={styles.filtersOverlay} onPress={onClose}>
-        {/* Painel NÃO clicável (bloqueia o clique de "vazar" pro overlay) */}
-        <Pressable style={styles.filtersPanel} onPress={() => {}}>
+      {/* 1. Fundo Escuro Centralizador */}
+      <View style={styles.modalOverlay}>
+        
+        {/* 2. A "Caixa" do Modal */}
+        <View style={styles.modalContent}>
           {children}
-        </Pressable>
-      </Pressable>
+        </View>
+        
+      </View>
     </Modal>
   );
 }
@@ -1995,7 +1989,6 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
       </Modal>
 
       <FiltersModal visible={filtersOpen} onClose={cancelFilters}>
-        <AppSafeArea style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={{ padding: 16 }} showsVerticalScrollIndicator>
             <Text style={styles.h1}>Filtros</Text>
 
@@ -2148,7 +2141,6 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
               <Text style={styles.btnText}>Limpar filtros</Text>
             </TouchableOpacity>
           </ScrollView>
-        </AppSafeArea>
       </FiltersModal>
 
   {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
@@ -2290,19 +2282,23 @@ const styles = StyleSheet.create({
   // --- ESTILOS PARA MODAL DE EXCLUSÃO ---
   modalOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',           
+    alignItems: 'center',               
+    padding: 20,
   },
   modalContent: {
-    backgroundColor: '#1E2F47',
+    backgroundColor: '#1E2F47', 
+    width: '100%',              
+    maxWidth: 500,              
     borderRadius: 12,
-    padding: 20,
-    marginHorizontal: 20,
-    width: '90%',
-    borderWidth: 1,
-    borderColor: '#3A506B',
-    alignItems: 'center',
+    padding: 20,                
+    maxHeight: '90%',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalTitle: {
     color: '#FFF',
