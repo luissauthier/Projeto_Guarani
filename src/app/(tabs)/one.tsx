@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { TextInputMask } from "react-native-masked-text";
 
 const AppSafeArea = Platform.OS === 'web' ? View : SafeAreaView;
 
@@ -75,6 +76,46 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
       <Text style={styles.infoValue}>{value || '—'}</Text>
     </View>
   );
+}
+
+function brToYmd(br: string) {
+  const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return '';
+  const [, dd, mm, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function ymdToBr(ymd: string) {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const [, yyyy, mm, dd] = m;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function isValidYmd(ymd: string) {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const d = new Date(ymd + "T00:00:00");
+  if (isNaN(d.getTime())) return false;
+
+  const [y, mo, da] = ymd.split('-').map(Number);
+  return d.getFullYear() === y && (d.getMonth()+1) === mo && d.getDate() === da;
+}
+
+// HH:MM válido
+function isValidHm(hm: string) {
+  const m = hm.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  return !!m;
+}
+
+function dateToYmd(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function dateToHm(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // --- helper: busca linhas do detalhe (nome, categoria, status) ---
@@ -227,6 +268,9 @@ export default function TreinosScreen() {
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [dataHoraBr, setDataHoraBr] = useState<string>(ymdToBr(dateToYmd(dataHora)));
+  const [horaBr, setHoraBr] = useState<string>(dateToHm(dataHora));
   
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [sel, setSel] = useState<Record<string, boolean>>({});
@@ -833,7 +877,10 @@ export default function TreinosScreen() {
     setDescricao('');
     setSel({});
     setStatusMap({});
-    setDataHora(roundNowTo15min()); // ✅ agora é Date
+    setDataHora(roundNowTo15min()); // ✅ agora é Date 
+    const d = roundNowTo15min();
+    setDataHoraBr(ymdToBr(dateToYmd(d)));
+    setHoraBr(dateToHm(d));
     setModal(true);
     loadJogadoresAtivos();
   }
@@ -842,7 +889,10 @@ export default function TreinosScreen() {
   async function openEdit(t: Treino) {
     setReadOnly(false);              
     setEditTreino(t);
-    setDataHora(new Date(t.data_hora));
+    const d = new Date(t.data_hora);
+    setDataHora(d);
+    setDataHoraBr(ymdToBr(dateToYmd(d)));
+    setHoraBr(dateToHm(d));
     setLocal(t.local ?? '');
     setDescricao(t.descricao ?? '');
     setSel({}); // limpa antes de recarregar
@@ -855,7 +905,10 @@ export default function TreinosScreen() {
   async function openView(t: Treino) {
     setReadOnly(true);                    // <- leitura
     setEditTreino(t);
-    setDataHora(new Date(t.data_hora));
+    const d = new Date(t.data_hora);
+    setDataHora(d);
+    setDataHoraBr(ymdToBr(dateToYmd(d)));
+    setHoraBr(dateToHm(d));
     setLocal(t.local ?? '');
     setDescricao(t.descricao ?? '');
     setSel({});
@@ -1071,18 +1124,13 @@ export default function TreinosScreen() {
                 type="date"
                 value={local.length === 10 ? local : ''}
                 onChange={(e) => {
-                  // só atualiza o rascunho, sem aplicar ainda
-                  const v = e.currentTarget.value; // "YYYY-MM-DD" ou ""
+                  const v = e.currentTarget.value;
                   setLocal(v);
                 }}
                 onBlur={(e) => {
-                  // ao sair do campo, aí sim aplica o filtro
                   const v = e.currentTarget.value;
-                  if (v) {
-                    commit(v);      // ex.: "2025-11-03"
-                  } else {
-                    commit('');     // limpa filtro
-                  }
+                  if (v) commit(v);
+                  else commit('');
                 }}
                 style={{
                   padding: 10,
@@ -1097,60 +1145,40 @@ export default function TreinosScreen() {
                 }}
               />
             ) : (
-              <>
-                {/* mobile fica igual, aplicando no onChange do DateTimePicker */}
-                <TouchableOpacity
-                  onPress={() => setShowPicker(true)}
-                  style={[styles.input, { justifyContent: 'center' }]}
-                >
-                  <Text style={{ color: local ? '#fff' : '#A0A0A0' }}>
-                    {local ? local.split('-').reverse().join('/') : 'Selecionar data'}
-                  </Text>
-                </TouchableOpacity>
+              <TextInputMask
+                type={'datetime'}
+                options={{ format: 'DD/MM/YYYY' }}
+                value={local ? ymdToBr(local) : ''}   // mostra BR
+                onChangeText={(txt) => {
+                  const t = txt ?? '';
 
-                {showPicker && (
-          <DateTimePicker
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            
-            // 1. VALOR SEGURO: Evita o crash se 'local' estiver vazio ou inválido
-            value={(() => {
-              try {
-                return (local && local.length === 10) 
-                  ? new Date(local + 'T00:00:00') 
-                  : new Date();
-              } catch {
-                return new Date();
-              }
-            })()}
-            
-            onChange={(event, selectedDate) => {
-              // 2. FECHAR NO ANDROID: Deve ser a primeira coisa a fazer
-              if (Platform.OS === 'android') {
-                setShowPicker(false);
-              }
+                  // se apagou tudo, limpa filtro
+                  if (!t) {
+                    setLocal('');
+                    commit('');
+                    return;
+                  }
 
-              // 3. VERIFICA CANCELAMENTO: Se cancelou ou não tem data, para tudo.
-              if (event.type === 'dismissed' || !selectedDate) {
-                // Se for iOS e não for inline, talvez precise fechar aqui também, 
-                // mas no seu código parece ser inline no iOS.
-                return;
-              }
-
-              // 4. PROCESSA A DATA (Se chegou aqui, é válida)
-              const d = selectedDate;
-              const yy = d.getFullYear();
-              // Certifique-se que a função pad2 existe no seu código, senão troque por String().padStart...
-              const mm = pad2(d.getMonth() + 1); 
-              const dd = pad2(d.getDate());
-              const v = `${yy}-${mm}-${dd}`;
-              
-              setLocal(v);
-              commit(v);
-            }}
-          />
-        )}
-              </>
+                  // só aplica quando tiver completo
+                  if (t.length === 10) {
+                    const ymd = brToYmd(t);
+                    if (isValidYmd(ymd)) {
+                      setLocal(ymd);   // guarda YMD
+                      commit(ymd);     // aplica filtro
+                    } else {
+                      setLocal('');
+                      commit('');
+                    }
+                  } else {
+                    // rascunho parcial não aplica
+                    setLocal(brToYmd(t) || local);
+                  }
+                }}
+                placeholder="DD/MM/AAAA"
+                placeholderTextColor="#A0A0A0"
+                keyboardType="number-pad"
+                style={styles.input}
+              />
             )}
           </>
         )}
@@ -1577,13 +1605,55 @@ export default function TreinosScreen() {
                     }}
                   />
                 ) : (
-                  <DateTimePicker
-                    value={dataHora}
-                    mode="datetime"
-                    onChange={(_, d) => { if (d) setDataHora(d); }}
-                    minuteInterval={15}
-                    display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                  />
+                  <>
+                    <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data do treino</Text>
+                    <TextInputMask
+                      type={'datetime'}
+                      options={{ format: 'DD/MM/YYYY' }}
+                      value={dataHoraBr}
+                      onChangeText={(txt) => {
+                        const t = txt ?? '';
+                        setDataHoraBr(t);
+
+                        if (t.length === 10) {
+                          const ymd = brToYmd(t);
+                          if (isValidYmd(ymd) && isValidHm(horaBr)) {
+                            const composed = new Date(`${ymd}T${horaBr}:00`);
+                            if (!isNaN(composed.getTime())) setDataHora(composed);
+                          }
+                        }
+                      }}
+                      placeholder="DD/MM/AAAA"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="number-pad"
+                      style={styles.input}
+                    />
+
+                    <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Hora do treino</Text>
+                    <TextInputMask
+                      type={'datetime'}
+                      options={{ format: 'HH:mm' }}
+                      value={horaBr}
+                      onChangeText={(txt) => {
+                        const t = txt ?? '';
+                        setHoraBr(t);
+
+                        const ymd = brToYmd(dataHoraBr);
+                        if (isValidYmd(ymd) && isValidHm(t)) {
+                          const composed = new Date(`${ymd}T${t}:00`);
+                          if (!isNaN(composed.getTime())) setDataHora(composed);
+                        }
+                      }}
+                      placeholder="HH:MM"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="number-pad"
+                      style={styles.input}
+                    />
+
+                    <Text style={{ color: '#B0B0B0', marginBottom: 10, fontSize: 12 }}>
+                      Ex.: 05/12/2025 e 18:30
+                    </Text>
+                  </>
                 )}
 
                 <TextInput
