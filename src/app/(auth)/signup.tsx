@@ -17,9 +17,53 @@ function todayYmd() {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+function parseYmd(ymd: string) {
+  if (!ymd) return null;
+  const d = new Date(ymd + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function calcAgeFromYmd(ymd: string) {
+  const dob = parseYmd(ymd);
+  if (!dob) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+function brToYmd(br: string) {
+  // br: dd/mm/yyyy
+  const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return '';
+  const [, dd, mm, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function ymdToBr(ymd: string) {
+  // ymd: yyyy-mm-dd
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const [, yyyy, mm, dd] = m;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function isValidYmd(ymd: string) {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const d = new Date(ymd + "T00:00:00");
+  if (isNaN(d.getTime())) return false;
+
+  // garante que não "normalizou" (ex: 31/02 vira 02/03)
+  const [y, mo, da] = ymd.split('-').map(Number);
+  return d.getFullYear() === y && (d.getMonth()+1) === mo && d.getDate() === da;
+}
+
 export default function Signup() {
   const [nome, setNome] = useState('');
   const [dataNascimento, setDataNascimento] = useState(todayYmd()); // yyyy-mm-dd
+  const [dataNascimentoBr, setDataNascimentoBr] = useState(ymdToBr(todayYmd()));
   const [responsavel, setResponsavel] = useState('');
   const [telefone, setTelefone] = useState('');
   const [telefoneMasked, setTelefoneMasked] = useState('');
@@ -27,22 +71,11 @@ export default function Signup() {
 
   const [saving, setSaving] = useState(false);
 
-  const idade = useMemo(() => {
-    if (!dataNascimento) return null;
-    const dob = new Date(dataNascimento);
-    if (isNaN(dob.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const m = today.getMonth() - dob.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-    return age;
-  }, [dataNascimento]);
+  const idade = useMemo(() => calcAgeFromYmd(dataNascimento), [dataNascimento]);
 
   const categoriaAno = useMemo(() => {
-    if (!dataNascimento) return null;
-    const dob = new Date(dataNascimento);
-    if (isNaN(dob.getTime())) return null;
-    return dob.getFullYear(); // mesma regra do banco
+    const dob = parseYmd(dataNascimento);
+    return dob ? dob.getFullYear() : null;
   }, [dataNascimento]);
 
   // refs + posições Y para focar/rolar até o campo com erro
@@ -94,78 +127,105 @@ export default function Signup() {
   }
 
   async function enviar() {
-    // limpa msgs antigas
+    console.log("== enviar() iniciou ==");
+
     setErrors({});
 
-    // validações em ordem e para no primeiro erro
     if (!nome.trim()) {
+      console.log("ERRO: nome vazio");
       setErrors(e => ({ ...e, nome: 'Informe o nome do jogador.' }));
       focusAndScroll(nomeRef, nomeY);
       return;
     }
 
+    console.log("nome OK:", nome);
+
     if (!dataNascimento.trim()) {
-      setErrors(e => ({ ...e, data_nascimento: 'Informe a data de nascimento (AAAA-MM-DD).' }));
-      focusAndScroll(null, dateY); // date é nativo; rola até ele
+      console.log("ERRO: dataNascimento vazio");
+      setErrors(e => ({ ...e, data_nascimento: 'Informe a data de nascimento (DD/MM/AAAA).' }));
+      focusAndScroll(null, dateY);
       return;
     }
-    const dob = new Date(dataNascimento);
-    if (isNaN(dob.getTime())) {
+
+    if (!isValidYmd(dataNascimento)) {
+      console.log("ERRO: dataNascimento inválida:", dataNascimento);
       setErrors(e => ({ ...e, data_nascimento: 'Data de nascimento inválida.' }));
       focusAndScroll(null, dateY);
       return;
     }
 
-    if (!telefone.trim()) {
-      setErrors(e => ({ ...e, telefone: 'Informe um número de telefone para contato.' }));
-      focusAndScroll(telRef, telY);
-      return;
-    }
+    console.log("data OK:", dataNascimento);
 
-    if (responsavelObrigatorio && !responsavel.trim()) {
+    const ageNow = calcAgeFromYmd(dataNascimento);
+    const respObrigatorioNow = ageNow !== null && ageNow < 18;
+
+    console.log("idade calculada:", ageNow, "respObrigatorioNow:", respObrigatorioNow);
+
+    if (respObrigatorioNow && !responsavel.trim()) {
+      console.log("ERRO: responsável obrigatório e vazio");
       setErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
       focusAndScroll(responsavelRef, respY);
       return;
     }
 
+    console.log("responsável OK:", responsavel);
+
+    const telefoneDigits = (telefone ?? '').replace(/\D/g, '');
+    if (telefoneDigits.length < 10) { // 10 = fixo com DDD, 11 pra celular completo
+      setErrors(e => ({ ...e, telefone: 'Informe um número de telefone para contato.' }));
+      focusAndScroll(telRef, telY);
+      return;
+    }
+    console.log("telefone OK:", telefone);
+
     setSaving(true);
     try {
+      console.log("vai inserir no supabase...");
+
+      const categoria = parseYmd(dataNascimento)?.getFullYear() ?? null;
+
       const { error } = await supabase.from('jogadores').insert({
         nome,
         data_nascimento: dataNascimento || null,
         email: email || null,
-        telefone,
-        responsavel_nome: responsavelObrigatorio ? responsavel : (responsavel || null),
+        telefone: telefoneDigits,
+        responsavel_nome: respObrigatorioNow ? responsavel : (responsavel || null),
         status: 'pre_inscrito',
-        categoria: dataNascimento ? new Date(dataNascimento).getFullYear() : null,
+        categoria,
         termo_entregue: false,
         is_jogador_guarani: false,
         observacao: null,
       });
 
-      if (error) throw error; // ⬅️ só daqui pra baixo é “sucesso” de fato
+      if (error) {
+        console.log("SUPABASE INSERT ERROR:", error);
+        Alert.alert('Erro ao enviar', error.message);
+        return;
+      }
 
-      // banner de sucesso + UX
+      console.log("INSERT OK ✅");
+
       setSuccessMsg('Pré-inscrição enviada! Você será redirecionado em instantes.');
       setJustSent(true);
 
-      // (opcional) limpar form
       setNome('');
       setTelefone('');
       setEmail('');
       setResponsavel('');
       setDataNascimento(todayYmd());
+      setDataNascimentoBr(ymdToBr(todayYmd()));
 
-      // redireciona suave
       setTimeout(() => {
         setSuccessMsg(null);
         router.back();
       }, 5000);
 
     } catch (e: any) {
+      console.log("CATCH ERROR:", e);
       Alert.alert('Erro', e?.message ?? 'Falha ao enviar pré-inscrição.');
     } finally {
       setSaving(false);
+      console.log("== enviar() terminou ==");
     }
   }
 
@@ -229,7 +289,12 @@ export default function Signup() {
             <input
               type="date"
               value={dataNascimento || todayYmd()}
-              onChange={(e) => { setDataNascimento(e.currentTarget.value); if (errors.data_nascimento) setErrors(s => ({ ...s, data_nascimento: undefined })); }}
+              onChange={(e) => {
+                const v = e.currentTarget.value; // yyyy-mm-dd
+                setDataNascimento(v);
+                setDataNascimentoBr(ymdToBr(v));
+                if (errors.data_nascimento) setErrors(s => ({ ...s, data_nascimento: undefined }));
+              }}
               max={todayYmd()}
               style={{
                 padding: 16,
@@ -245,19 +310,28 @@ export default function Signup() {
               }}
             />
           ) : (
-            <DateTimePicker
-              mode="date"
-              value={dataNascimento ? new Date(dataNascimento + 'T00:00:00') : new Date()}
-              onChange={(_, d) => {
-                if (d) {
-                  const pad = (n: number) => String(n).padStart(2, '0');
-                  const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-                  setDataNascimento(v);
-                  if (errors.data_nascimento) setErrors(s => ({ ...s, data_nascimento: undefined }));
+            <TextInputMask
+              type={'datetime'}
+              options={{ format: 'DD/MM/YYYY' }}
+              value={dataNascimentoBr ?? ''}  // <-- garante string
+              onChangeText={(text) => {
+                const t = text ?? '';
+                setDataNascimentoBr(t);
+
+                if (t.length === 10) {
+                  const ymd = brToYmd(t);
+                  setDataNascimento(ymd);
+                  if (errors.data_nascimento)
+                    setErrors(s => ({ ...s, data_nascimento: undefined }));
                 }
               }}
-              maximumDate={new Date()}
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="number-pad"
+              style={[
+                styles.input,
+                errors.data_nascimento && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+              ]}
             />
           )}
 
@@ -279,25 +353,34 @@ export default function Signup() {
         <TextInputMask
           type={'cel-phone'}
           options={{
-            maskType: 'BRL', // Formato Brasileiro
+            maskType: 'BRL',
             withDDD: true,
-            dddMask: '(99) ', // Como o DDD deve aparecer
+            dddMask: '(99) ',
           }}
-          style={styles.input}
+          style={[
+            styles.input,
+            errors.telefone && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+          ]}
           placeholder="Telefone do Responsável (com DDD)"
           placeholderTextColor="#A0A0A0"
-          keyboardType="phone-pad"          
-          // No Web, usa o estado mascarado. No Mobile, usa o estado puro.
-          value={Platform.OS === 'web' ? telefoneMasked : telefone}
-          
-          onChangeText={(maskedText, rawText) => {
-            // Salva o valor PURO no estado 'telefone' (para o Supabase)
-            setTelefone(rawText ?? '');
-            
-            // Salva o valor MASCARADO no estado 'telefoneMasked' (para o 'value' do Web)
-            setTelefoneMasked(maskedText ?? '');
+          keyboardType="phone-pad"
+          value={telefoneMasked} // ✅ sempre o que aparece na tela
+          onChangeText={(maskedText) => {
+            const masked = maskedText ?? '';
+            setTelefoneMasked(masked);
+
+            // salva digits também (opcional, mas útil)
+            setTelefone(masked.replace(/\D/g, ''));
+
+            if (errors.telefone) setErrors(e => ({ ...e, telefone: undefined }));
           }}
         />
+
+        {!!errors.telefone && (
+          <Text style={{ color: '#FF6B6B', marginTop: -6, marginBottom: 10, fontSize: 12 }}>
+            {errors.telefone}
+          </Text>
+        )}
 
         <TextInput placeholder="E-mail (opcional)" placeholderTextColor="#A0A0A0"
           value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
@@ -369,7 +452,4 @@ const styles = {
   } as any,
   submitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 } as any,
 };
-function focusAndScroll(nomeRef: React.RefObject<TextInput | null>, nomeY: number) {
-  throw new Error('Function not implemented.');
-}
 
