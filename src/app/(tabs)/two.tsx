@@ -32,7 +32,6 @@ function debugSbError(ctx: string, error: any) {
   console.log('[SUPABASE ERROR]', ctx, error);
   return msg;
 }
-const [showDatePicker, setShowDatePicker] = useState(false);
 
 function WebModal({
   visible,
@@ -101,6 +100,29 @@ function todayYmd() {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+function brToYmd(br: string) {
+  const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return '';
+  const [, dd, mm, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function ymdToBr(ymd: string) {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const [, yyyy, mm, dd] = m;
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function isValidYmd(ymd: string) {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const d = new Date(ymd + "T00:00:00");
+  if (isNaN(d.getTime())) return false;
+
+  const [y, mo, da] = ymd.split('-').map(Number);
+  return d.getFullYear() === y && (d.getMonth()+1) === mo && d.getDate() === da;
+}
 
 // Escapa ; converte undefined/null -> ''
 function csvEscape(v: any) {
@@ -373,6 +395,8 @@ export default function AdminScreen() {
   const [filtroStatusParceiro, setFiltroStatusParceiro] = useState<StatusParceiro | 'todos'>('todos');
   const [filtroTipoDoador, setFiltroTipoDoador] = useState<TipoDoador | 'todos'>('todos');
 
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   // novos filtros por ano (de/até)
   const [yearFrom, setYearFrom] = useState<string>('');
   const [yearTo, setYearTo] = useState<string>('');
@@ -396,6 +420,9 @@ function formatLocalForInput(iso: string) {
   const [filtroTermo, setFiltroTermo] = useState<'todos'|'sim'|'nao'>('todos');
 
   // DATA
+
+  const [dataNascBr, setDataNascBr] = useState<string>(ymdToBr(todayYmd()));
+
   const [loading, setLoading] = useState(true);
   const [jogadores, setJogadores] = useState<Jogador[]>([]);
   const [colaboradores, setcolaboradores] = useState<UserRow[]>([]);
@@ -707,10 +734,12 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
       setEditJog(j); 
       setFormJog(j); 
       setJogTelefoneMasked(j.telefone ?? '');
+      setDataNascBr(ymdToBr(j.data_nascimento ?? todayYmd()));
     } else { 
       setEditJog(null); 
       setFormJog({ status: 'pre_inscrito' as StatusJog, data_nascimento: todayYmd() }); // 👈 default = hoje
       setJogTelefoneMasked('');
+      setDataNascBr(ymdToBr(todayYmd()));
     }
     setModalJog(true);
   }
@@ -724,6 +753,10 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
     const nomeValido = (formJog.nome ?? '').trim();
     if (!nomeValido) {
       errors.nome = 'Nome é obrigatório.';
+    }
+
+    if (!formJog.data_nascimento || !isValidYmd(formJog.data_nascimento)) {
+      errors.data_nascimento = 'Data de nascimento inválida.';
     }
 
     // 3. Validação do TELEFONE
@@ -1463,78 +1496,57 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         )}
 
         <Text style={styles.label}>Data de nascimento</Text>
-        {Platform.OS === 'web' ? (
-          <input
-            type="date"
-            value={formJog.data_nascimento ?? todayYmd()}
-            onChange={(e) =>
-              setFormJog((s) => ({ ...s, data_nascimento: e.currentTarget.value }))
-            }
-            style={{
-              padding: 10,
-              border: '1px solid #4A6572',
-              backgroundColor: '#203A4A',
-              color: '#FFF',
-              borderRadius: 10,
-              height: 50,
-              marginBottom: 10,
-              width: '100%',
-              boxSizing: 'border-box',
-            }}
-          />
-        ) : (
-          <View>
-            {/* NO ANDROID: MOSTRA UM BOTÃO PARA ABRIR O CALENDÁRIO */}
-            {Platform.OS === 'android' && (
-              <TouchableOpacity
-                onPress={() => setShowDatePicker(true)}
-                style={[styles.input, { justifyContent: 'center' }]}
-              >
-                <Text style={{ color: formJog.data_nascimento ? '#FFF' : '#A0A0A0' }}>
-                  {formJog.data_nascimento
-                    ? new Date(formJog.data_nascimento + 'T00:00:00').toLocaleDateString('pt-BR')
-                    : 'Selecionar Data de Nascimento'}
-                </Text>
-              </TouchableOpacity>
-            )}
+          {Platform.OS === 'web' ? (
+            <input
+              type="date"
+              value={formJog.data_nascimento ?? todayYmd()}
+              onChange={(e) =>
+                setFormJog((s) => ({ ...s, data_nascimento: e.currentTarget.value }))
+              }
+              style={{
+                padding: 10,
+                border: '1px solid #4A6572',
+                backgroundColor: '#203A4A',
+                color: '#FFF',
+                borderRadius: 10,
+                height: 50,
+                marginBottom: 10,
+                width: '100%',
+                boxSizing: 'border-box',
+              }}
+            />
+          ) : (
+            <TextInputMask
+              type={'datetime'}
+              options={{ format: 'DD/MM/YYYY' }}
+              value={dataNascBr ?? ''}
+              onChangeText={(txt) => {
+                const t = txt ?? '';
+                setDataNascBr(t);
 
-            {/* O CALENDÁRIO: 
-                - No iOS aparece sempre (inline).
-                - No Android só aparece se clicou no botão (showDatePicker).
-            */}
-            {(Platform.OS === 'ios' || showDatePicker) && (
-              <DateTimePicker
-                mode="date"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                value={(() => {
-                  try {
-                    return formJog.data_nascimento
-                      ? new Date(formJog.data_nascimento + 'T00:00:00')
-                      : new Date();
-                  } catch {
-                    return new Date();
+                if (!t) {
+                  setFormJog(s => ({ ...s, data_nascimento: null }));
+                  return;
+                }
+
+                if (t.length === 10) {
+                  const ymd = brToYmd(t);
+                  if (isValidYmd(ymd)) {
+                    setFormJog(s => ({ ...s, data_nascimento: ymd }));
+                  } else {
+                    setFormJog(s => ({ ...s, data_nascimento: null }));
                   }
-                })()}
-                onChange={(event, selectedDate) => {
-                  // 1. No Android, fecha o modal imediatamente
-                  if (Platform.OS === 'android') {
-                    setShowDatePicker(false);
-                  }
-
-                  // 2. Se cancelou ou não tem data, não faz nada
-                  if (event.type === 'dismissed' || !selectedDate) return;
-
-                  // 3. Formata e salva (YYYY-MM-DD)
-                  const d = selectedDate;
-                  const pad = (n: number) => String(n).padStart(2, '0');
-                  const v = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-                  setFormJog((s) => ({ ...s, data_nascimento: v }));
-                }}
-              />
-            )}
-          </View>
-        )}
+                }
+              }}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="number-pad"
+              style={[
+                styles.input,
+                jogErrors.data_nascimento && styles.inputError,
+              ]}
+            />
+          )}
 
         {(idade !== null || categoriaAno !== null) && (
           <Text style={{ color: '#E0E0E0', marginBottom: 10 }}>
@@ -1930,37 +1942,49 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             />
 
             <Text style={styles.label}>Apoiador desde</Text>
-            {Platform.OS === 'web' ? (
-              <input
-                type="date"
-                value={parSince}
-                onChange={(e) => setParSince(e.currentTarget.value)} // YYYY-MM-DD
-                style={{
-                  padding: 10,
-                  border: '1px solid #4A6572',
-                  backgroundColor: '#203A4A',
-                  color: '#FFF',
-                  borderRadius: 10,
-                  height: 50,
-                  marginBottom: 10,
-                  width: '100%',
-                  boxSizing: 'border-box',
-                }}
-              />
-            ) : (
-              <DateTimePicker
-                mode="date"
-                value={new Date(parSince + 'T00:00:00')}
-                onChange={(_, d) => {
-                  if (d) {
-                    const pad = (n: number) => String(n).padStart(2, '0');
-                    const v = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-                    setParSince(v);
-                  }
-                }}
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              />
-            )}
+              {Platform.OS === 'web' ? (
+                <input
+                  type="date"
+                  value={parSince}
+                  onChange={(e) => setParSince(e.currentTarget.value)}
+                  style={{
+                    padding: 10,
+                    border: '1px solid #4A6572',
+                    backgroundColor: '#203A4A',
+                    color: '#FFF',
+                    borderRadius: 10,
+                    height: 50,
+                    marginBottom: 10,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              ) : (
+                <TextInputMask
+                  type={'datetime'}
+                  options={{ format: 'DD/MM/YYYY' }}
+                  value={ymdToBr(parSince) || ''}
+                  onChangeText={(txt) => {
+                    const t = txt ?? '';
+
+                    if (!t) {
+                      setParSince(todayYmd()); // ou '' se preferir permitir vazio
+                      return;
+                    }
+
+                    if (t.length === 10) {
+                      const ymd = brToYmd(t);
+                      if (isValidYmd(ymd)) {
+                        setParSince(ymd);
+                      }
+                    }
+                  }}
+                  placeholder="DD/MM/AAAA"
+                  placeholderTextColor="#A0A0A0"
+                  keyboardType="number-pad"
+                  style={styles.input}
+                />
+              )}
 
             {/* dentro do conteúdo do Modal de Parceiro, logo após o título */}
             {!!debugMsg && (
