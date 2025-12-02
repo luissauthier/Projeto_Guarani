@@ -442,6 +442,8 @@ function formatLocalForInput(iso: string) {
   const [dFiltroStatusParceiro, setDFiltroStatusParceiro] = useState(filtroStatusParceiro);
   const [dFiltroTipoDoador, setDFiltroTipoDoador] = useState(filtroTipoDoador);
 
+  const isMobile = Platform.OS !== 'web';
+
   function applyFilters() {
     // Jogadores
     setYearFrom(dYearFrom);
@@ -1328,6 +1330,36 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
       )}
 
       {!loading && tab === 'jogadores' && (
+        isMobile ? (
+          <FlatList
+            data={jogadoresFiltrados}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <View style={styles.mobileRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mobileTitle} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={styles.mobileSub}>
+                    Cat: {getCategoriaAno(item) ?? '-'} • {formatPgDateOnly(item.data_nascimento)}
+                  </Text>
+                </View>
+
+                <View style={styles.mobileActions}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditJog(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'jogador')}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
+          />
+        ) : (
         <TableWrapper>
           <FlatList
             data={jogadoresFiltrados}
@@ -1372,9 +1404,42 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador encontrado.</Text>}
             />
         </TableWrapper>
+        )
       )}
 
       {!loading && tab === 'colaboradores' && (
+        isMobile ? (
+          <FlatList
+            data={colaboradoresFiltrados}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <View style={styles.mobileRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mobileTitle} numberOfLines={1}>
+                    {item.full_name ?? '-'}
+                  </Text>
+                  <Text style={styles.mobileSub}>
+                    Tipo: {item.type_user ?? '-'} • {item.ativo ? 'ativo' : 'inativo'}
+                  </Text>
+                </View>
+
+                <View style={styles.mobileActions}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openeditCol(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'colaborador')}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum colaborador encontrado.</Text>}
+          />
+        ) : (
         <TableWrapper>
           <FlatList
             data={colaboradoresFiltrados}
@@ -1416,9 +1481,40 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
           />
         </TableWrapper>
+        )
       )}
 
       {!loading && tab === 'parceiros' && (
+        isMobile ? (
+          <FlatList
+            data={parceirosFiltrados}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <View style={styles.mobileRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mobileTitle} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={styles.mobileSub}>
+                    {item.tipo_doador} • {item.status}
+                  </Text>
+                </View>
+
+                <View style={styles.mobileActions}>
+                  <TouchableOpacity style={styles.btnPrimary} onPress={() => openEditPar(item)}>
+                    <Text style={styles.btnText}>Editar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.btnDanger}
+                    onPress={() => openDeleteConfirm(item, 'parceiro')}
+                  >
+                    <Text style={styles.btnText}>Excluir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
+          />
+        ) : (
         <TableWrapper>
           <FlatList
             data={parceirosFiltrados}
@@ -1462,6 +1558,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
             ListEmptyComponent={<Text style={styles.empty}>Nenhum parceiro encontrado.</Text>}
           />
         </TableWrapper>
+        )
       )}
 
   {/* MODAL JOGADOR */}
@@ -2460,5 +2557,30 @@ const styles = StyleSheet.create({
 
   filterFull: {
     width: '100%',
+  },
+  mobileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E2F47',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#3A506B',
+  },
+  mobileTitle: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  mobileSub: {
+    color: '#B0B0B0',
+    marginTop: 4,
+    fontSize: 12,
+  },
+  mobileActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginLeft: 10,
   },
 });
