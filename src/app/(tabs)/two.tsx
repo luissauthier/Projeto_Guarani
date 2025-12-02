@@ -535,12 +535,7 @@ function formatLocalForInput(iso: string) {
   }, [jogadores]);
 
   const notify = React.useCallback((title: string, msg: string) => {
-    if (Platform.OS === 'web') {
-      // Usa seu banner amarelo de debug
-      setDebugMsg(`${title}: ${msg}`);
-    } else {
-      Alert.alert(title, msg);
-    }
+    setDebugMsg(`${title}: ${msg}`);
   }, []);
 
   const load = useCallback(async () => {
@@ -834,7 +829,7 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
 
       setModalJog(false);
       await load();
-      Alert.alert('Sucesso', 'Dados do jogador salvos.');
+      notify('Sucesso', 'Dados do jogador salvos.');
     } catch (e:any) {
       console.log('[saveJogador] erro:', e);
       Alert.alert('Erro ao Salvar Jogador', debugSbError('salvar jogador', e));
@@ -1001,7 +996,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
 
       setModalPar(false);
       await load();
-      setDebugMsg('✅ Dados do parceiro salvos.');
+      notify('Sucesso', 'Dados do parceiro salvos.');
     } catch (e: any) {
       console.log('[saveParceiro] erro:', e);
       const errorMsg = debugSbError('salvar parceiro', e);
@@ -1029,7 +1024,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         return;
       }
       await load();
-      setDebugMsg('✅ Jogador excluído com sucesso.');
+      notify('Sucesso', 'Jogador excluído com sucesso.');
     } catch (e: any) {
       const msg = debugSbError('delete jogador catch', e);
       setDebugMsg(msg);
@@ -1137,7 +1132,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
 
         await load();
         setDebugMsg('✅ Dados do Colaborador salvos.');
-        Alert.alert('Sucesso', 'Dados do Colaborador salvos.');
+        notify('Sucesso', 'Dados do colaborador salvos.');
         return;
       }
 
@@ -1180,7 +1175,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
 
       await load();
       setDebugMsg('✅ Colaborador criado com sucesso.');
-      Alert.alert('Sucesso', 'Colaborador criado com senha.');
+      notify('Sucesso', 'Colaborador criado com senha.');
     } catch (e: any) {
       console.log('[saveCol] erro:', e);
       Alert.alert('Erro ao Salvar Colaborador', debugSbError('salvar Colaborador', e));
@@ -1210,7 +1205,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
       }
 
       await load();
-      setDebugMsg('✅ Colaborador excluído definitivamente.');
+      notify('Sucesso', 'Colaborador excluído definitivamente.');
     } catch (e: any) {
       const msg = debugSbError('delete Colaborador catch', e);
       setDebugMsg(msg);
@@ -1227,7 +1222,7 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         return;
       }
       await load();
-      setDebugMsg('✅ Parceiro excluído com sucesso.');
+      notify('Sucesso', 'Parceiro excluído com sucesso.');
     } catch (e: any) {
       const msg = debugSbError('delete parceiro catch', e);
       setDebugMsg(msg);
