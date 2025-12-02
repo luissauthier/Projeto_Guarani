@@ -61,19 +61,17 @@ function FiltersModal({ visible, onClose, children }: any) {
   return (
     <Modal
       visible={visible}
-      transparent={true} // OBRIGATÓRIO para ver o fundo escuro
-      animationType="fade" // 'slide' ou 'fade'
-      onRequestClose={onClose} // Botão voltar do Android
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
     >
-      {/* 1. Fundo Escuro Centralizador */}
-      <View style={styles.modalOverlay}>
-        
-        {/* 2. A "Caixa" do Modal */}
-        <View style={styles.modalContent}>
+      {/* Backdrop clicável */}
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        {/* Conteúdo: impede o clique de “vazar” pro backdrop */}
+        <Pressable style={styles.modalContent} onPress={() => {}}>
           {children}
-        </View>
-        
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
