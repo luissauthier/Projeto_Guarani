@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, SafeAreaView, ScrollView, Alert, ActivityIndicator, StatusBar, Platform } from 'react-native';
 import { Link } from 'expo-router';
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -66,15 +66,17 @@ export default function Login() {
     }
   }
 
+  const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollViewContent}>
         <View style={styles.container}>
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: topPad }]}>
             <Text style={styles.logoText}>Projeto Guarani</Text>
 
             <Link href="/(auth)/signup" asChild>
-              <Pressable style={styles.inscricaoButton}>
+              <Pressable style={styles.inscricaoButton} hitSlop={12}>
                 <Text style={styles.inscricaoButtonText}>Inscrição</Text>
               </Pressable>
             </Link>
@@ -156,17 +158,19 @@ const styles = StyleSheet.create({
         flexDirection: 'row', // Para alinhar lado a lado
         justifyContent: 'space-between', // Logo na esquerda, botão na direita
         alignItems: 'center', // Alinhados verticalmente
-        marginBottom: 40,
-        paddingHorizontal: 10,
+        marginBottom: 32,
+        paddingHorizontal: 8,
         width: '100%', // Garante que o header ocupe toda a largura
+        gap: 12,
     },
     logoText: {
-        fontSize: 36, // Diminuído de 48 para caber melhor
+        fontSize: 32, // Diminuído de 48 para caber melhor
         fontWeight: 'bold',
         color: '#ffffff',
         textShadowColor: 'rgba(0, 0, 0, 0.75)',
         textShadowOffset: { width: -1, height: 1 },
         textShadowRadius: 10,
+        flexShrink: 1,
     },
     inscricaoButton: {
         backgroundColor: '#ffffff', // Usando o verde principal do app
@@ -178,6 +182,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 3,
+        flexShrink: 0,
     },
     inscricaoButtonText: {
         color: '#000000',
