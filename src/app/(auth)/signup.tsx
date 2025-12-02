@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, Alert,
   Pressable, ActivityIndicator, Platform,
-  View
+  View, StatusBar
 } from 'react-native';
 import { TextInputMask } from "react-native-masked-text"; // <-- NOME CORRIGIDO
 import { router } from 'expo-router';
@@ -229,16 +229,34 @@ export default function Signup() {
     }
   }
 
+  const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0A1931' }}>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 16 }}>
-        <TouchableOpacity onPress={handleSignOut} style={{ alignSelf: 'flex-end', padding: 8 }}>
-          <Feather name="home" size={24} color="#00C2CB" />
-        </TouchableOpacity>
-
-        <Text style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 12, color: '#fff' }}>
-          Pré-inscrição de jogador
-        </Text>
+      {/* HEADER fora do Scroll */}
+      <View style={[styles.headerContainer, { paddingTop: topPad }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={handleSignOut}
+            style={styles.homeButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="home" size={24} color="#00C2CB" />
+          </TouchableOpacity>
+  
+          <Text style={styles.headerTitle}>
+            Pré-inscrição de jogador
+          </Text>
+  
+          <View style={{ width: 24 }} />
+        </View>
+      </View>
+  
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ padding: 16, paddingTop: 8 }}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {successMsg && (
           <Pressable
@@ -451,5 +469,30 @@ const styles = {
     justifyContent: 'center', marginTop: 8,
   } as any,
   submitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 } as any,
+  headerContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: '#0A1931',
+  } as any,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginTop: 4,
+  } as any,
+  homeButton: {
+    padding: 8,
+    borderRadius: 999,
+    // opcional: um fundo leve pra indicar toque
+    // backgroundColor: '#0F2A44',
+  } as any,
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,              // ocupa o meio
+  } as any,
 };
 
