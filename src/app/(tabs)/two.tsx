@@ -1685,10 +1685,11 @@ const [parErrors, setParErrors] = React.useState<Record<string, string>>({});
         />
         <TextInput
           ref={responsavelRef}
-          // ... suas props de layout ...
+          onLayout={(e) => setJogRespY(e.nativeEvent.layout.y)}
           style={[styles.input, jogErrors.responsavel && styles.inputError]} // Estilo de erro
           placeholder="Responsável (se menor de 18)"
-          // ...
+          placeholderTextColor="#A0A0A0"
+          value={formJog.responsavel_nome ?? ''}
           onChangeText={(t) => {
              setFormJog((s) => ({ ...s, responsavel_nome: t }));
              // Limpa erro ao digitar
