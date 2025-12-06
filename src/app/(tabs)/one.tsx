@@ -152,6 +152,29 @@ async function getDetalheTreinoRows(treinoId: string) {
   return rows;
 }
 
+function FiltersModal({ visible, onClose, children }: any) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      {/* Backdrop clicável */}
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.filtersOverlay}>
+          {/* Conteúdo centralizado */}
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={styles.filtersPanel}>
+              {children}
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
 // --- DOCX do detalhe ---
 async function exportDetalheTreinoDocx(treino: Treino) {
   const rows = await getDetalheTreinoRows(treino.id);
@@ -284,6 +307,8 @@ export default function TreinosScreen() {
   const [readOnly, setReadOnly] = useState(false);
 
   const [buscaTreino, setBuscaTreino] = useState<string>(''); // barra de pesquisa
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // filtros por string (web-friendly)
   const [inicioStr, setInicioStr] = useState<string>('');   // "", "2025", "2025-11", "2025-11-03"
@@ -1372,42 +1397,92 @@ export default function TreinosScreen() {
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);
     const resumo = presCount[item.id] ?? { presente: 0, faltou: 0, justificou: 0 };
+    const isWeb = Platform.OS === 'web';
 
+    if (isWeb) {
+      // ===== WEB usando o layout “compacto tipo admin mobile” =====
+      return (
+        <View style={styles.webRow}>
+          {/* infos */}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.webRowTitle} numberOfLines={1}>
+              {dt.toLocaleString()}
+            </Text>
+
+            <Text style={styles.webRowSub} numberOfLines={1}>
+              {item.local ? `Local: ${item.local} • ` : ''}
+              Pres.: {resumo.presente} • Faltas: {resumo.faltou}
+              {resumo.justificou ? ` • Just.: ${resumo.justificou}` : ''}
+            </Text>
+
+            {!!item.descricao && (
+              <Text style={styles.webRowSub} numberOfLines={1}>
+                {item.descricao}
+              </Text>
+            )}
+          </View>
+
+          {/* ações */}
+          <View style={styles.webRowActions}>
+            <TouchableOpacity style={styles.btnNeutralSmall} onPress={() => openView(item)}>
+              <Text style={styles.btnText}>Ver</Text>
+            </TouchableOpacity>
+
+            {(isAdmin || isCoach) && (
+              <>
+                <TouchableOpacity style={styles.btnPrimarySmall} onPress={() => openEdit(item)}>
+                  <Text style={styles.btnText}>Editar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.btnDangerSmall} onPress={() => openDeleteConfirm(item)}>
+                  <Text style={styles.btnText}>Excluir</Text>
+                </TouchableOpacity>
+
+                <ExportMenu
+                  compact
+                  onCsv={() => exportDetalheTreinoCsv(item.id)}
+                  onDocx={() => exportDetalheTreinoDocx(item)}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    // ===== MOBILE mantém o que já está bom hoje =====
     return (
-      <View style={styles.card}>
-        <Text style={styles.title}>{dt.toLocaleString()}</Text>
-        {!!item.local && <Text style={styles.line}>Local: {item.local}</Text>}
-        {!!item.descricao && <Text style={styles.line}>{item.descricao}</Text>}
-        <Text style={[styles.line, { fontWeight: '600' }]}>
-          Presenças: {resumo.presente}
-        </Text>
-        <Text style={styles.line}>Faltas: {resumo.faltou}</Text>
-        {resumo.justificou ? <Text style={styles.line}>Justificadas: {resumo.justificou}</Text> : null}
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap:'wrap' }}>
-          <TouchableOpacity style={styles.btnNeutral} onPress={() => openView(item)}>
-            <Text style={styles.btnText}>Ver detalhes</Text>
-          </TouchableOpacity>
+      <View style={styles.mobileCard}>
+        <View style={styles.mobileInfoRow}>
+          <Text style={styles.mobileTitle} numberOfLines={1}>
+            {dt.toLocaleString()}
+          </Text>
+          <Text style={styles.mobileSub} numberOfLines={1}>
+            {item.local ? `Local: ${item.local} • ` : ''}
+            Pres.: {resumo.presente} • Faltas: {resumo.faltou}
+            {resumo.justificou ? ` • Just.: ${resumo.justificou}` : ''}
+          </Text>
+          {!!item.descricao && (
+            <Text style={styles.mobileSub} numberOfLines={1}>
+              {item.descricao}
+            </Text>
+          )}
+        </View>
 
+        <View style={styles.mobileActionsRow}>
+          <TouchableOpacity style={styles.btnNeutralSmall} onPress={() => openView(item)}>
+            <Text style={styles.btnText}>Ver</Text>
+          </TouchableOpacity>
           {(isAdmin || isCoach) && (
             <>
-              <TouchableOpacity style={styles.btnPrimary} onPress={() => openEdit(item)}>
+              <TouchableOpacity style={styles.btnPrimarySmall} onPress={() => openEdit(item)}>
                 <Text style={styles.btnText}>Editar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.btnDanger}
-                onPress={() => openDeleteConfirm(item)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
+              <TouchableOpacity style={styles.btnDangerSmall} onPress={() => openDeleteConfirm(item)}>
                 <Text style={styles.btnText}>Excluir</Text>
               </TouchableOpacity>
+              <ExportMenu compact onCsv={() => exportDetalheTreinoCsv(item.id)} onDocx={() => exportDetalheTreinoDocx(item)} />
             </>
-          )}
-
-          {(isAdmin || isCoach) && (
-            <ExportMenu
-              onCsv={() => exportDetalheTreinoCsv(item.id)}
-              onDocx={() => exportDetalheTreinoDocx(item)}
-            />
           )}
         </View>
       </View>
@@ -1432,94 +1507,38 @@ export default function TreinosScreen() {
 
       <Text style={styles.h1}>Treinos</Text>
 
+      {/* SEARCH + FILTER (igual admin) */}
+      <View style={styles.filtersBox}>
+        <View style={styles.searchRow}>
+          <TextInput
+            placeholder="Buscar por local, descrição ou data"
+            placeholderTextColor="#A0A0A0"
+            style={[styles.input, styles.searchInput]}
+            value={buscaTreino}
+            onChangeText={setBuscaTreino}
+          />
+
+          <TouchableOpacity
+            style={[styles.btnNeutral, styles.filterBtnInline]}
+            onPress={() => setFiltersOpen(true)}
+          >
+            <Feather name="filter" size={16} color="#fff" />
+            <Text style={styles.btnText}>  Filtrar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* AÇÕES (AGORA AQUI EMBAIXO) */}
       {(isAdmin || isCoach) && (
-        <View style={{ display:'flex', justifyContent: 'flex-end', marginBottom: 12, alignItems: 'center', gap: 8, flexDirection: 'row', flexWrap:'wrap' }}>
+        <View style={{ flexDirection:'row', justifyContent:'flex-end', gap: 10, marginBottom: 12, flexWrap:'wrap' }}>
           <TouchableOpacity style={styles.btnPrimary} onPress={openCreate}>
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Novo treino</Text>
           </TouchableOpacity>
 
-          <ExportMenu
-            onCsv={exportResumoCsv}
-            onDocx={exportResumoDocx}
-          />
+          <ExportMenu onCsv={exportResumoCsv} onDocx={exportResumoDocx} />
         </View>
       )}
-
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Pesquisar treinos</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Buscar por local, descrição ou data (ex.: 'quadra', 'físico', '12/11/2025')"
-          placeholderTextColor="#A0A0A0"
-          value={buscaTreino}
-          onChangeText={setBuscaTreino}
-        />
-      </View>
-
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Filtrar treinos por data</Text>
-
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
-          <View style={{ flex: 1 }}>
-            <GranularDateInput
-              label="Início"
-              value={inicioDraft}
-              onChange={handleChangeInicioDraft}
-            />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <GranularDateInput
-              label="Fim (opcional)"
-              value={fimDraft}
-              onChange={handleChangeFimDraft}
-            />
-          </View>
-
-          {/* Botão aplicar apenas no web */}
-          {Platform.OS === 'web' && (
-            <TouchableOpacity
-              onPress={aplicarFiltroDatas}
-              style={styles.btnApplyFilter}
-            >
-              <Feather name="filter" size={18} color="#fff" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-          <TouchableOpacity
-            style={styles.btnNeutral}
-            onPress={() => {
-              const d = new Date();
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, '0');
-              setInicioStr(`${y}-${m}`);  // este mês
-              setFimStr('');
-            }}
-          >
-            <Text style={styles.btnText}>Este mês</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.btnNeutral}
-            onPress={() => {
-              const y = new Date().getFullYear();
-              setInicioStr(String(y));    // este ano
-              setFimStr('');
-            }}
-          >
-            <Text style={styles.btnText}>Este ano</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.btnNeutral}
-            onPress={() => { setInicioStr(''); setFimStr(''); }}
-          >
-            <Text style={styles.btnText}>Todos</Text>
-          </TouchableOpacity>
-        </View>
-
-      </View>
 
       {loading ? (
         <ActivityIndicator color="#007BFF" style={{ marginTop: 40 }} />
@@ -1746,6 +1765,103 @@ export default function TreinosScreen() {
         </AppSafeArea >
       </Modal>
 
+      <FiltersModal visible={filtersOpen} onClose={() => setFiltersOpen(false)}>
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <Text style={styles.h1}>Filtros</Text>
+
+          {/* Início em linha separada */}
+          <GranularDateInput
+            label="Início"
+            value={inicioDraft}
+            onChange={handleChangeInicioDraft}
+          />
+
+          {/* Fim em linha separada */}
+          <GranularDateInput
+            label="Fim (opcional)"
+            value={fimDraft}
+            onChange={handleChangeFimDraft}
+          />
+
+          {/* Botões rápidos */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, flexWrap:'wrap' }}>
+            <TouchableOpacity
+              style={styles.btnNeutral}
+              onPress={() => {
+                const d = new Date();
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                setInicioDraft(`${y}-${m}`);
+                setFimDraft('');
+              }}
+            >
+              <Text style={styles.btnText}>Este mês</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnNeutral}
+              onPress={() => {
+                const y = new Date().getFullYear();
+                setInicioDraft(String(y));
+                setFimDraft('');
+              }}
+            >
+              <Text style={styles.btnText}>Este ano</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.btnNeutral}
+              onPress={() => {
+                setInicioDraft('');
+                setFimDraft('');
+              }}
+            >
+              <Text style={styles.btnText}>Todos</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Ações do modal */}
+          <View style={{ flexDirection:'row', gap:10, marginTop: 12 }}>
+            <TouchableOpacity
+              style={[styles.btnPrimary, { flex:1 }]}
+              onPress={() => {
+                // aplica drafts
+                setInicioStr(inicioDraft);
+                setFimStr(fimDraft);
+                setFiltersOpen(false);
+              }}
+            >
+              <Text style={styles.btnText}>Aplicar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.btnNeutral, { flex:1 }]}
+              onPress={() => {
+                // cancela e volta drafts pro que estava aplicado
+                setInicioDraft(inicioStr);
+                setFimDraft(fimStr);
+                setFiltersOpen(false);
+              }}
+            >
+              <Text style={styles.btnText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.btnDanger, { marginTop: 10 }]}
+            onPress={() => {
+              setInicioDraft('');
+              setFimDraft('');
+              setInicioStr('');
+              setFimStr('');
+              setFiltersOpen(false);
+            }}
+          >
+            <Text style={styles.btnText}>Limpar filtros</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </FiltersModal>
+
       <Modal
         visible={isDeleteModalVisible}
         transparent={true}
@@ -1891,12 +2007,204 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     color: '#A8BCD0',
-    width: 90,              // largura fixa p/ alinhar
+    width: 90,
     fontWeight: '600',
   },
   infoValue: {
     color: '#FFF',
     flex: 1,
+    flexShrink: 1,     // ✅ permite encolher pra caber na linha
+    flexWrap: 'wrap',  // ✅ quebra linha
+    width: 0,          // ✅ importante em row com label fixa
+    lineHeight: 20,
   },
+  filtersBox: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+    marginBottom:12
+  },
+  searchRow: {
+    flexDirection:'row',
+    alignItems:'center',
+    gap:10,
+  },
+  searchInput: {
+    flex:1,
+    marginBottom:0,
+  },
+  filterBtnInline: {
+    height:50,
+    paddingHorizontal:14,
+    justifyContent:'center',
+  },
+
+  // cards mobile tipo admin
+  mobileRow: {
+    flexDirection:'row',
+    alignItems:'center',
+    backgroundColor:'#1E2F47',
+    borderRadius:10,
+    padding:12,
+    marginBottom:10,
+    borderWidth:1,
+    borderColor:'#3A506B',
+  },
+  mobileTitle: {
+    color:'#FFF',
+    fontWeight:'700',
+    fontSize:15,
+  },
+  mobileSub: {
+    color:'#B0B0B0',
+    marginTop:4,
+    fontSize:12,
+  },
+  mobileActions: {
+    flexDirection:'row',
+    gap:6,
+    marginLeft:10,
+    flexWrap:'wrap',
+  },
+  mobileCard: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:12,
+    marginBottom:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+  },
+  mobileInfoRow: {
+    gap: 4,
+  },
+  mobileActionsRow: {
+    flexDirection:'row',
+    gap: 8,
+    marginTop: 10,
+    flexWrap:'wrap',
+  },
+
+  btnPrimarySmall: {
+    backgroundColor:'#18641c',
+    paddingVertical:8,
+    paddingHorizontal:12,
+    borderRadius:8,
+    alignItems:'center',
+    justifyContent:'center',
+  },
+  btnNeutralSmall: {
+    backgroundColor:'#4A6572',
+    paddingVertical:8,
+    paddingHorizontal:12,
+    borderRadius:8,
+    alignItems:'center',
+    justifyContent:'center',
+  },
+  btnDangerSmall: {
+    backgroundColor:'#FF4C4C',
+    paddingVertical:8,
+    paddingHorizontal:12,
+    borderRadius:8,
+    alignItems:'center',
+    justifyContent:'center',
+  },
+  filtersOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',   // ✅ centraliza no mobile e no web
+    alignItems: 'center',
+    padding: 20,
+  },
+  filtersPanel: {
+    backgroundColor: '#1E2F47', // ✅ mesmo tom da admin
+    width: '100%',
+    maxWidth: 520,              // ✅ web não ocupa tela toda
+    borderRadius: 12,
+    padding: 0,                 // o ScrollView interno já tem padding
+    maxHeight: '90%',
+    borderWidth: 1,
+    borderColor: '#3A506B',
+    overflow: 'hidden',
+  },
+  webCard: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:14,
+    marginBottom:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+  },
+  webActionsRow: {
+    flexDirection:'row',
+    gap: 8,
+    marginTop: 12,
+    justifyContent:'flex-end',
+    flexWrap:'wrap',
+  },
+  webCardRow: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:14,
+    marginBottom:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+    flexDirection:'row',
+    alignItems:'center',
+  },
+
+  webActionsInline: {
+    flexDirection:'row',
+    gap: 8,
+    alignItems:'center',
+    flexWrap:'nowrap',     // ✅ força ficar na mesma linha
+  },
+
+  webTitle: {
+    color:'#FFF',
+    fontWeight:'700',
+    fontSize:17,
+  },
+  webSub: {
+    color:'#B0B0B0',
+    fontSize:13,
+  },
+  webBadge: {
+    color:'#E0E0E0',
+    fontSize:12,
+    fontWeight:'600',
+  },
+  webRow: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:12,
+    marginBottom:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+    flexDirection:'row',
+    alignItems:'center',
+    gap: 12,
+  },
+
+  webRowTitle: {
+    color:'#FFF',
+    fontWeight:'700',
+    fontSize:16,
+  },
+
+  webRowSub: {
+    color:'#B0B0B0',
+    fontSize:12,
+    marginTop: 2,
+  },
+
+  webRowActions: {
+    flexDirection:'row',
+    gap: 8,
+    alignItems:'center',
+    flexWrap:'nowrap',
+  },
+
 });
 
