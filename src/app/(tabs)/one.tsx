@@ -962,52 +962,51 @@ export default function TreinosScreen() {
 
   function GranularDateInput({ label, value, onChange }: GranularDateInputProps) {
     const [mode, setMode] = React.useState<'year' | 'month' | 'day'>(detectGranularity(value));
-    const [local, setLocal] = React.useState(value); // estado “rascunho”
+    const [local, setLocal] = React.useState(value);
 
-    // Se alguém mudar de fora (botão "este mês", "todos"), sincroniza
+    // drafts auxiliares só pro modo month (mobile)
+    const [draftYear, setDraftYear] = React.useState('');
+    const [draftMonth, setDraftMonth] = React.useState('');
+
     React.useEffect(() => {
       setLocal(value);
+      if (detectGranularity(value) === 'month') {
+        setDraftYear(value.slice(0,4) || '');
+        setDraftMonth(value.slice(5,7) || '');
+      }
+      if (detectGranularity(value) === 'year') {
+        setDraftYear(value.slice(0,4) || '');
+        setDraftMonth('');
+      }
+      if (detectGranularity(value) === 'day') {
+        setDraftYear(value.slice(0,4) || '');
+        setDraftMonth(value.slice(5,7) || '');
+      }
     }, [value]);
 
-    function pad2(n: number | string) {
-      return String(n).padStart(2, '0');
-    }
-
     function commit(v: string) {
-      // aqui sim avisamos o pai (e aí ele chama loadTreinos)
-      if (!v) {
-        onChange('');
-        return;
-      }
-
+      if (!v) return onChange('');
       const isYear  = /^\d{4}$/.test(v);
       const isMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(v);
       const isDay   = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v);
 
       if (
-        (mode === 'year'  && isYear)  ||
+        (mode === 'year'  && isYear) ||
         (mode === 'month' && isMonth) ||
         (mode === 'day'   && isDay)
-      ) {
-        onChange(v);
-      } else {
-        // inválido → limpa; se quiser pode trocar por Alert
-        onChange('');
-        setLocal('');
-      }
+      ) onChange(v);
+      else onChange('');
     }
 
     function switchMode(next: 'year' | 'month' | 'day') {
       setMode(next);
-      // não muda o filtro ainda, só muda UI
+      // não aplica nada automaticamente; só muda UI
     }
 
-    // ====== RENDER ======
     return (
       <View style={{ marginBottom: 10 }}>
         <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>{label}</Text>
 
-        {/* “segmented buttons” Ano / Mês/Ano / Dia */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
           {(['year','month','day'] as const).map(t => (
             <TouchableOpacity
@@ -1027,8 +1026,6 @@ export default function TreinosScreen() {
           ))}
         </View>
 
-        {/* ===== Campo conforme o modo ===== */}
-
         {/* ANO */}
         {mode === 'year' && (
           <TextInput
@@ -1039,16 +1036,11 @@ export default function TreinosScreen() {
             value={local.slice(0, 4)}
             onChangeText={(txt) => {
               const only = txt.replace(/\D/g, '').slice(0, 4);
-              setLocal(only);           // atualiza “rascunho”
-
-              // 👉 assim que tiver 4 dígitos, já aplica o filtro
-              if (only.length === 4) {
-                commit(only);
-              }
+              setLocal(only);
+              if (only.length === 4) commit(only);
             }}
             onBlur={() => {
               const y = local.replace(/\D/g, '').slice(0, 4);
-              // se saiu do campo com menos de 4 dígitos, limpa
               if (y.length === 4) commit(y);
               else commit('');
             }}
@@ -1064,9 +1056,9 @@ export default function TreinosScreen() {
                 type="month"
                 value={local.length >= 7 ? local.slice(0, 7) : ''}
                 onChange={(e) => {
-                  const v = e.currentTarget.value; // "YYYY-MM"
+                  const v = e.currentTarget.value; // YYYY-MM
                   setLocal(v);
-                  commit(v); // já escolheu o mês → pode aplicar
+                  commit(v);
                 }}
                 style={{
                   padding: 10,
@@ -1081,35 +1073,63 @@ export default function TreinosScreen() {
                 }}
               />
             ) : (
-              // mobile: dois inputs simples (MM e AAAA) com commit no blur
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
                   placeholder="MM"
                   placeholderTextColor="#A0A0A0"
                   keyboardType="numeric"
-                  value={local.slice(5, 7)}
+                  value={draftMonth}
                   onChangeText={(txt) => {
                     const only = txt.replace(/\D/g, '').slice(0, 2);
-                    const mm = only ? pad2(Math.min(12, Math.max(1, Number(only)))) : '';
-                    // mantém ano já digitado
-                    const y = local.slice(0, 4);
-                    setLocal(y && mm ? `${y}-${mm}` : y);
+                    let mm = only;
+                    if (mm.length === 1) mm = mm; // deixa digitar
+                    if (mm.length === 2) {
+                      const n = Number(mm);
+                      if (n < 1 || n > 12) mm = '';
+                    }
+                    setDraftMonth(mm);
+
+                    // se já tiver ano completo e mês completo, aplica
+                    if (draftYear.length === 4 && mm.length === 2) {
+                      const v = `${draftYear}-${mm}`;
+                      setLocal(v);
+                      commit(v);
+                    } else {
+                      setLocal(draftYear); // rascunho
+                    }
                   }}
-                  onBlur={() => commit(local)}
+                  onBlur={() => {
+                    if (draftYear.length === 4 && draftMonth.length === 2) {
+                      commit(`${draftYear}-${draftMonth}`);
+                    } else commit('');
+                  }}
+                  maxLength={2}
                 />
                 <TextInput
                   style={[styles.input, { flex: 2 }]}
                   placeholder="AAAA"
                   placeholderTextColor="#A0A0A0"
                   keyboardType="numeric"
-                  value={local.slice(0, 4)}
+                  value={draftYear}
                   onChangeText={(txt) => {
                     const only = txt.replace(/\D/g, '').slice(0, 4);
-                    const mm = local.slice(5, 7);
-                    setLocal(only && mm ? `${only}-${mm}` : only);
+                    setDraftYear(only);
+
+                    if (only.length === 4 && draftMonth.length === 2) {
+                      const v = `${only}-${draftMonth}`;
+                      setLocal(v);
+                      commit(v);
+                    } else {
+                      setLocal(only);
+                    }
                   }}
-                  onBlur={() => commit(local)}
+                  onBlur={() => {
+                    if (draftYear.length === 4 && draftMonth.length === 2) {
+                      commit(`${draftYear}-${draftMonth}`);
+                    } else commit('');
+                  }}
+                  maxLength={4}
                 />
               </View>
             )}
@@ -1123,15 +1143,8 @@ export default function TreinosScreen() {
               <input
                 type="date"
                 value={local.length === 10 ? local : ''}
-                onChange={(e) => {
-                  const v = e.currentTarget.value;
-                  setLocal(v);
-                }}
-                onBlur={(e) => {
-                  const v = e.currentTarget.value;
-                  if (v) commit(v);
-                  else commit('');
-                }}
+                onChange={(e) => setLocal(e.currentTarget.value)}
+                onBlur={(e) => commit(e.currentTarget.value || '')}
                 style={{
                   padding: 10,
                   border: '1px solid #4A6572',
@@ -1148,30 +1161,14 @@ export default function TreinosScreen() {
               <TextInputMask
                 type={'datetime'}
                 options={{ format: 'DD/MM/YYYY' }}
-                value={local ? ymdToBr(local) : ''}   // mostra BR
+                value={local ? ymdToBr(local) : ''}
                 onChangeText={(txt) => {
                   const t = txt ?? '';
-
-                  // se apagou tudo, limpa filtro
-                  if (!t) {
-                    setLocal('');
-                    commit('');
-                    return;
-                  }
-
-                  // só aplica quando tiver completo
+                  if (!t) { setLocal(''); commit(''); return; }
                   if (t.length === 10) {
                     const ymd = brToYmd(t);
-                    if (isValidYmd(ymd)) {
-                      setLocal(ymd);   // guarda YMD
-                      commit(ymd);     // aplica filtro
-                    } else {
-                      setLocal('');
-                      commit('');
-                    }
-                  } else {
-                    // rascunho parcial não aplica
-                    setLocal(brToYmd(t) || local);
+                    if (isValidYmd(ymd)) { setLocal(ymd); commit(ymd); }
+                    else { setLocal(''); commit(''); }
                   }
                 }}
                 placeholder="DD/MM/AAAA"
