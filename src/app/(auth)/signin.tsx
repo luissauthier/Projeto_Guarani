@@ -123,11 +123,13 @@ export default function Login() {
               {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.buttonText}>Acessar</Text>}
             </Pressable>
           </View>
-          <Link href="/recuperar-senha" asChild>
-            <Pressable style={styles.forgotPasswordLink}>
-              <Text style={styles.forgotPasswordText}>Esqueceu a senha?</Text>
-            </Pressable>
-          </Link>
+            
+            <View style={styles.forgotPasswordContainer}>
+              <Text style={styles.forgotPasswordTitle}>Esqueceu a senha?</Text>
+              <Text style={styles.forgotPasswordMessage}>
+                Para trocar sua senha entre em contato com o administrador do sistema
+              </Text>
+            </View>
 
           <Link href="/apoio" asChild>
             <Pressable style={styles.apoioButton}>
@@ -302,5 +304,23 @@ const styles = StyleSheet.create({
       fontSize: 15,
       flex: 1, // Permite que o texto quebre a linha
       marginRight: 10,
+    },
+    forgotPasswordContainer: {
+        marginTop: 25,
+        alignItems: 'center',
+        paddingHorizontal: 10, // Para o texto não encostar nas bordas em telas pequenas
+    },
+    forgotPasswordTitle: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 6, // Espaço entre o título e a mensagem
+        // Removi o 'underline' pois não é mais clicável
+    },
+    forgotPasswordMessage: {
+        color: '#dbece2', // Um branco levemente esverdeado ou cinza claro para diferenciar
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20, // Melhora a leitura se quebrar em duas linhas
     },
 });
