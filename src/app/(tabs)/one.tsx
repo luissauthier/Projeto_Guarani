@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, FlatList, ActivityIndicator,
-  TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform,
-  Dimensions, TouchableWithoutFeedback, useWindowDimensions
+  TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform, 
+  TouchableWithoutFeedback, useWindowDimensions
 } from 'react-native';
 import { Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from 'docx'
 import { supabase } from '@/src/lib/supabase';
@@ -1396,9 +1396,6 @@ export default function TreinosScreen() {
       setDebugMsg(msg);
     }
   }
-  
-  const [showInicio, setShowInicio] = useState(false);
-  const [showFim, setShowFim] = useState(false);
 
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   SafeAreaView, ScrollView, Text, View,
-  Pressable, StyleSheet, Platform, ToastAndroid
+  Pressable, StyleSheet, Platform, ToastAndroid,
+  Linking 
 } from 'react-native';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -9,6 +10,13 @@ import * as Clipboard from 'expo-clipboard';
 
 export default function ApoioScreen() {
   const cnpj = '20.921.598/0001-69';
+
+  const instaUrl = 'https://www.instagram.com/projetoguarani_oficial';
+  
+  function openInstagram() {
+    Linking.openURL(instaUrl);
+  }
+
   const [copied, setCopied] = useState(false);
 
   async function copyCnpj() {
@@ -53,6 +61,16 @@ export default function ApoioScreen() {
           </Pressable>
         </View>
         {copied && <Text style={styles.copiedText}>Chave PIX copiada com sucesso</Text>}
+
+        <View style={styles.saibaMaisBox}>
+          <Text style={styles.saibaMaisText}>Conheça mais sobre esse projeto:</Text>
+
+          <Pressable onPress={openInstagram} style={styles.instagramBtn}>
+            <Feather name="instagram" size={18} color="#0A1931" />
+            <Text style={styles.instagramBtnText}>Projeto Guarani</Text>
+          </Pressable>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -131,5 +149,29 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: '#AEEA00',
     fontWeight: '600',
-  }
+  },
+  saibaMaisBox: {
+    marginTop: 30,
+    alignItems: 'center',
+  },
+  saibaMaisText: {
+    fontSize: 16,
+    color: '#B0B0B0',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  instagramBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  instagramBtnText: {
+    color: '#0A1931',
+    fontWeight: '700',
+    fontSize: 15,
+  },
 });
