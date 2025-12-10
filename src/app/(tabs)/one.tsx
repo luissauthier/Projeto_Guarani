@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, FlatList, ActivityIndicator,
   TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform,
-  Dimensions, TouchableWithoutFeedback
+  Dimensions, TouchableWithoutFeedback, useWindowDimensions
 } from 'react-native';
 import { Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from 'docx'
 import { supabase } from '@/src/lib/supabase';
@@ -263,6 +263,11 @@ type Jogador = {
 /* ================= Component ================= */
 
 export default function TreinosScreen() {
+
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isNarrowWeb = isWeb && width < 720; // breakpoint pro web mobile
+
   const { setAuth, user, isAdmin, isCoach } = useAuth();
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
 
@@ -1397,10 +1402,9 @@ export default function TreinosScreen() {
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);
     const resumo = presCount[item.id] ?? { presente: 0, faltou: 0, justificou: 0 };
-    const isWeb = Platform.OS === 'web';
 
-    if (isWeb) {
-      // ===== WEB usando o layout “compacto tipo admin mobile” =====
+    // ===== WEB DESKTOP =====
+    if (isWeb && !isNarrowWeb) {
       return (
         <View style={styles.webRow}>
           {/* infos */}
@@ -1450,7 +1454,56 @@ export default function TreinosScreen() {
       );
     }
 
-    // ===== MOBILE mantém o que já está bom hoje =====
+    // ===== WEB MOBILE (layout tipo app) =====
+    if (isWeb && isNarrowWeb) {
+      return (
+        <View style={styles.webMobileCard}>
+          <View style={styles.mobileInfoRow}>
+            <Text style={styles.mobileTitle} numberOfLines={1}>
+              {dt.toLocaleString()}
+            </Text>
+
+            <Text style={styles.mobileSub} numberOfLines={2}>
+              {item.local ? `Local: ${item.local} • ` : ''}
+              Pres.: {resumo.presente} • Faltas: {resumo.faltou}
+              {resumo.justificou ? ` • Just.: ${resumo.justificou}` : ''}
+            </Text>
+
+            {!!item.descricao && (
+              <Text style={styles.mobileSub} numberOfLines={2}>
+                {item.descricao}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.webMobileActionsRow}>
+            <TouchableOpacity style={styles.btnNeutralSmall} onPress={() => openView(item)}>
+              <Text style={styles.btnText}>Ver</Text>
+            </TouchableOpacity>
+
+            {(isAdmin || isCoach) && (
+              <>
+                <TouchableOpacity style={styles.btnPrimarySmall} onPress={() => openEdit(item)}>
+                  <Text style={styles.btnText}>Editar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.btnDangerSmall} onPress={() => openDeleteConfirm(item)}>
+                  <Text style={styles.btnText}>Excluir</Text>
+                </TouchableOpacity>
+
+                <ExportMenu
+                  compact
+                  onCsv={() => exportDetalheTreinoCsv(item.id)}
+                  onDocx={() => exportDetalheTreinoDocx(item)}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    // ===== MOBILE APP =====
     return (
       <View style={styles.mobileCard}>
         <View style={styles.mobileInfoRow}>
@@ -2205,6 +2258,19 @@ const styles = StyleSheet.create({
     alignItems:'center',
     flexWrap:'nowrap',
   },
-
+  webMobileCard: {
+    backgroundColor:'#1E2F47',
+    borderRadius:12,
+    padding:12,
+    marginBottom:12,
+    borderWidth:1,
+    borderColor:'#3A506B',
+  },
+  webMobileActionsRow: {
+    flexDirection:'row',
+    flexWrap:'wrap',  // quebra linha quando apertar
+    gap: 8,
+    marginTop: 10,
+  },
 });
 
