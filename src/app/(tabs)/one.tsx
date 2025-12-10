@@ -267,6 +267,7 @@ export default function TreinosScreen() {
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
   const isNarrowWeb = isWeb && width < 720; // breakpoint pro web mobile
+  const isVeryNarrowWeb = isWeb && width < 480;
 
   const { setAuth, user, isAdmin, isCoach } = useAuth();
   const [debugMsg, setDebugMsg] = useState<string | null>(null);
@@ -1751,9 +1752,22 @@ export default function TreinosScreen() {
                   </Text>
 
                   {/* Filtro por categoria (ano) */}
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View
+                    style={{
+                      flexDirection: isVeryNarrowWeb ? 'column' : 'row',
+                      gap: isVeryNarrowWeb ? 0 : 10,
+                      width: '100%',
+                    }}
+                  >
                     <TextInput
-                      style={[styles.input, { flex: 1 }]}
+                      style={[
+                        styles.input,
+                        {
+                          flex: isVeryNarrowWeb ? undefined : 1,
+                          width: '100%',
+                          minWidth: 0, // <-- essencial no web mobile
+                        },
+                      ]}
                       placeholder="Ano de (ex: 2008)"
                       placeholderTextColor="#A0A0A0"
                       keyboardType="numeric"
@@ -1761,7 +1775,14 @@ export default function TreinosScreen() {
                       onChangeText={handleYearFrom}
                     />
                     <TextInput
-                      style={[styles.input, { flex: 1 }]}
+                      style={[
+                        styles.input,
+                        {
+                          flex: isVeryNarrowWeb ? undefined : 1,
+                          width: '100%',
+                          minWidth: 0, // <-- essencial no web mobile
+                        },
+                      ]}
                       placeholder="Ano até (ex: 2012)"
                       placeholderTextColor="#A0A0A0"
                       keyboardType="numeric"
