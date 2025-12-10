@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, SafeAreaView, StyleSheet, Text, View, FlatList, ActivityIndicator,
   TouchableOpacity, TextInput, Modal, ScrollView, Switch, Platform, 
-  TouchableWithoutFeedback, useWindowDimensions
+  TouchableWithoutFeedback, useWindowDimensions,
+  LayoutAnimation, UIManager
 } from 'react-native';
 import { Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from 'docx'
 import { supabase } from '@/src/lib/supabase';
@@ -296,6 +297,7 @@ export default function TreinosScreen() {
   const [dataHora, setDataHora] = useState<Date>(roundNowTo15min());
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
+  const [infoCollapsed, setInfoCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [dataHoraBr, setDataHoraBr] = useState<string>(ymdToBr(dateToYmd(dataHora)));
@@ -331,6 +333,17 @@ export default function TreinosScreen() {
   useEffect(() => {
     setFimDraft(fimStr);
   }, [fimStr]);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  function toggleInfoCollapsed() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setInfoCollapsed(v => !v);
+  }
 
   function handleChangeInicioDraft(v: string) {
     setInicioDraft(v);
@@ -902,6 +915,7 @@ export default function TreinosScreen() {
   }
 
   function openCreate() {
+    setInfoCollapsed(false);
     setReadOnly(false);
     setEditTreino(null);
     setLocal('');
@@ -918,6 +932,7 @@ export default function TreinosScreen() {
 
   // --- CORREÇÃO: Chama a busca de presenças ao editar ---
   async function openEdit(t: Treino) {
+    setInfoCollapsed(false);
     setReadOnly(false);              
     setEditTreino(t);
     const d = new Date(t.data_hora);
@@ -934,6 +949,7 @@ export default function TreinosScreen() {
   }
 
   async function openView(t: Treino) {
+    setInfoCollapsed(false);
     setReadOnly(true);                    // <- leitura
     setEditTreino(t);
     const d = new Date(t.data_hora);
@@ -1663,86 +1679,123 @@ export default function TreinosScreen() {
             ) : (
               // ==== MODO EDIÇÃO (sem mudanças) ====
               <>
-                {Platform.OS === 'web' ? (
-                  <input
-                    type="datetime-local"
-                    value={formatLocalForInputWeb(dataHora)}
-                    onChange={(e) => setDataHora(new Date(e.currentTarget.value))}
-                    step={900}
-                    style={{
-                      padding: 10, border: '1px solid #4A6572', backgroundColor: '#203A4A',
-                      color: '#FFF', borderRadius: 10, height: 50, marginBottom: 10, width: '100%', boxSizing: 'border-box',
-                    }}
-                  />
-                ) : (
-                  <>
-                    <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data do treino</Text>
-                    <TextInputMask
-                      type={'datetime'}
-                      options={{ format: 'DD/MM/YYYY' }}
-                      value={dataHoraBr}
-                      onChangeText={(txt) => {
-                        const t = txt ?? '';
-                        setDataHoraBr(t);
+                {/* Cabeçalho recolhível */}
+                <TouchableOpacity
+                  onPress={toggleInfoCollapsed}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.box,
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: infoCollapsed ? 6 : 12,
+                      paddingVertical: 10,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>
+                    Informações do treino
+                  </Text>
 
-                        if (t.length === 10) {
-                          const ymd = brToYmd(t);
-                          if (isValidYmd(ymd) && isValidHm(horaBr)) {
-                            const composed = new Date(`${ymd}T${horaBr}:00`);
-                            if (!isNaN(composed.getTime())) setDataHora(composed);
-                          }
-                        }
-                      }}
-                      placeholder="DD/MM/AAAA"
-                      placeholderTextColor="#A0A0A0"
-                      keyboardType="number-pad"
-                      style={styles.input}
-                    />
-
-                    <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Hora do treino</Text>
-                    <TextInputMask
-                      type={'datetime'}
-                      options={{ format: 'HH:mm' }}
-                      value={horaBr}
-                      onChangeText={(txt) => {
-                        const t = txt ?? '';
-                        setHoraBr(t);
-
-                        const ymd = brToYmd(dataHoraBr);
-                        if (isValidYmd(ymd) && isValidHm(t)) {
-                          const composed = new Date(`${ymd}T${t}:00`);
-                          if (!isNaN(composed.getTime())) setDataHora(composed);
-                        }
-                      }}
-                      placeholder="HH:MM"
-                      placeholderTextColor="#A0A0A0"
-                      keyboardType="number-pad"
-                      style={styles.input}
-                    />
-
-                    <Text style={{ color: '#B0B0B0', marginBottom: 10, fontSize: 12 }}>
-                      Ex.: 05/12/2025 e 18:30
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: '#B0B0B0', fontSize: 12 }}>
+                      {infoCollapsed ? 'Mostrar' : 'Recolher'}
                     </Text>
-                  </>
+                    <Feather
+                      name={infoCollapsed ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color="#fff"
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Conteúdo recolhível */}
+                {!infoCollapsed && (
+                  <View style={{ marginBottom: 6 }}>
+                    {Platform.OS === 'web' ? (
+                      <input
+                        type="datetime-local"
+                        value={formatLocalForInputWeb(dataHora)}
+                        onChange={(e) => setDataHora(new Date(e.currentTarget.value))}
+                        step={900}
+                        style={{
+                          padding: 10, border: '1px solid #4A6572', backgroundColor: '#203A4A',
+                          color: '#FFF', borderRadius: 10, height: 50, marginBottom: 10, width: '100%', boxSizing: 'border-box',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Data do treino</Text>
+                        <TextInputMask
+                          type={'datetime'}
+                          options={{ format: 'DD/MM/YYYY' }}
+                          value={dataHoraBr}
+                          onChangeText={(txt) => {
+                            const t = txt ?? '';
+                            setDataHoraBr(t);
+
+                            if (t.length === 10) {
+                              const ymd = brToYmd(t);
+                              if (isValidYmd(ymd) && isValidHm(horaBr)) {
+                                const composed = new Date(`${ymd}T${horaBr}:00`);
+                                if (!isNaN(composed.getTime())) setDataHora(composed);
+                              }
+                            }
+                          }}
+                          placeholder="DD/MM/AAAA"
+                          placeholderTextColor="#A0A0A0"
+                          keyboardType="number-pad"
+                          style={styles.input}
+                        />
+
+                        <Text style={{ color: '#E0E0E0', marginBottom: 6 }}>Hora do treino</Text>
+                        <TextInputMask
+                          type={'datetime'}
+                          options={{ format: 'HH:mm' }}
+                          value={horaBr}
+                          onChangeText={(txt) => {
+                            const t = txt ?? '';
+                            setHoraBr(t);
+
+                            const ymd = brToYmd(dataHoraBr);
+                            if (isValidYmd(ymd) && isValidHm(t)) {
+                              const composed = new Date(`${ymd}T${t}:00`);
+                              if (!isNaN(composed.getTime())) setDataHora(composed);
+                            }
+                          }}
+                          placeholder="HH:MM"
+                          placeholderTextColor="#A0A0A0"
+                          keyboardType="number-pad"
+                          style={styles.input}
+                        />
+
+                        <Text style={{ color: '#B0B0B0', marginBottom: 10, fontSize: 12 }}>
+                          Ex.: 05/12/2025 e 18:30
+                        </Text>
+                      </>
+                    )}
+
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Local (opcional)"
+                      placeholderTextColor="#A0A0A0"
+                      value={local}
+                      onChangeText={setLocal}
+                    />
+
+                    <TextInput
+                      style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
+                      multiline numberOfLines={4}
+                      placeholder="Descrição/atividades"
+                      placeholderTextColor="#A0A0A0"
+                      value={descricao}
+                      onChangeText={setDescricao}
+                    />
+                  </View>
                 )}
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="Local (opcional)"
-                  placeholderTextColor="#A0A0A0"
-                  value={local}
-                  onChangeText={setLocal}
-                />
-
-                <TextInput
-                  style={[styles.input, { height: 90, textAlignVertical: 'top' }]}
-                  multiline numberOfLines={4}
-                  placeholder="Descrição/atividades"
-                  placeholderTextColor="#A0A0A0"
-                  value={descricao}
-                  onChangeText={setDescricao}
-                />
-
+                {/* Lista de chamada continua igual */}
                 <View style={[styles.box, { flex: 1 }]}>
                   <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>
                     Selecionar jogadores (ativos)
@@ -1762,7 +1815,7 @@ export default function TreinosScreen() {
                         {
                           flex: isVeryNarrowWeb ? undefined : 1,
                           width: '100%',
-                          minWidth: 0, // <-- essencial no web mobile
+                          minWidth: 0,
                         },
                       ]}
                       placeholder="Ano de (ex: 2008)"
@@ -1777,7 +1830,7 @@ export default function TreinosScreen() {
                         {
                           flex: isVeryNarrowWeb ? undefined : 1,
                           width: '100%',
-                          minWidth: 0, // <-- essencial no web mobile
+                          minWidth: 0,
                         },
                       ]}
                       placeholder="Ano até (ex: 2012)"
@@ -1788,7 +1841,6 @@ export default function TreinosScreen() {
                     />
                   </View>
 
-                  {/* Busca por nome/ano */}
                   <TextInput
                     style={styles.input}
                     placeholder="Pesquisar nome/ano"
