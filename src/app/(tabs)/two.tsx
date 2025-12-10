@@ -774,10 +774,8 @@ const [jogErrors, setJogErrors] = useState<Record<string, string>>({});
       setSavingJog(false);
       return; // <--- Interrompe aqui, não salva
     }
-    if (!formJog?.nome?.trim()) return Alert.alert('Atenção', 'Informe o nome.');
-    if (!formJog?.telefone?.trim()) return Alert.alert('Atenção', 'Informe o telefone.');
     // responsável obrigatório para menor de 18
-    if (!responsavelObrigatorio && !(formJog.responsavel_nome ?? '').trim()) {
+    if (responsavelObrigatorio && !(formJog.responsavel_nome ?? '').trim()) {
       setSavingJog(false);
       setJogErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18 anos.' }));
       requestAnimationFrame(() => {
