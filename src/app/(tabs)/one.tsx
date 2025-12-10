@@ -1626,10 +1626,18 @@ export default function TreinosScreen() {
               // ==== MODO RELATÓRIO (sem maxHeight) ====
               <View style={{ flex: 1 }}>
                 {/* Caixa com infos gerais (altura automática) */}
-                <View style={styles.box}>
+                {/* <View style={styles.box}>
                   <InfoRow label="Data" value={dataHora.toLocaleString()} />
                   <InfoRow label="Local" value={local} />
                   <InfoRow label="Descrição" value={descricao} />
+                </View> */}
+
+                <View style={[styles.box, styles.infoBoxLimited]}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <InfoRow label="Data" value={dataHora.toLocaleString()} />
+                    <InfoRow label="Local" value={local} />
+                    <InfoRow label="Descrição" value={descricao} />
+                  </ScrollView>
                 </View>
 
                 {/* Caixa de alunos ocupa o espaço restante e scrolla */}
@@ -2271,6 +2279,9 @@ const styles = StyleSheet.create({
     flexWrap:'wrap',  // quebra linha quando apertar
     gap: 8,
     marginTop: 10,
+  },
+  infoBoxLimited: {
+    maxHeight: Platform.OS === 'web' ? 220 : 160,
   },
 });
 
