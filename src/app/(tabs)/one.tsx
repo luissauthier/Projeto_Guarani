@@ -1626,11 +1626,6 @@ export default function TreinosScreen() {
               // ==== MODO RELATÓRIO (sem maxHeight) ====
               <View style={{ flex: 1 }}>
                 {/* Caixa com infos gerais (altura automática) */}
-                {/* <View style={styles.box}>
-                  <InfoRow label="Data" value={dataHora.toLocaleString()} />
-                  <InfoRow label="Local" value={local} />
-                  <InfoRow label="Descrição" value={descricao} />
-                </View> */}
 
                 <View style={[styles.box, styles.infoBoxLimited]}>
                   <ScrollView showsVerticalScrollIndicator={false}>
