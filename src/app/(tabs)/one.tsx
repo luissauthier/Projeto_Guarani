@@ -252,6 +252,18 @@ type Treino = {
   local: string | null;
   descricao: string | null;
   created_at: string;
+  atualizado_em: string | null;
+
+  // join do users
+  treinador?: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+  } | null;
+
+  editor?: { id: string; full_name: string | null; email: string | null } | null;
+  updated_by?: string | null;
+
 };
 
 type Jogador = {
@@ -844,9 +856,13 @@ export default function TreinosScreen() {
       const range = buildRangeFromInputs(inicioStr, fimStr);
 
       let query = supabase
-        .from('treinos')
-        .select('*')
-        .order('data_hora', { ascending: false });
+      .from('treinos')
+      .select(`
+        *,
+        treinador:users!treinos_treinador_id_fkey ( id, full_name, email ),
+        editor:users!treinos_updated_by_fkey ( id, full_name, email )
+      `)
+      .order('data_hora', { ascending: false });
 
       if (range?.startISO) {
         query = query.gte('data_hora', range.startISO);
@@ -1352,6 +1368,7 @@ export default function TreinosScreen() {
             local: local || null,
             descricao: descricao || null,
             atualizado_em: new Date().toISOString(),
+            updated_by: user.id,
           })
           .eq('id', editTreino.id)
           .select()
@@ -1373,6 +1390,7 @@ export default function TreinosScreen() {
             local: local || null,
             descricao: descricao || null,
             treinador_id: user.id,
+            updated_by: user.id,
           })
           .select('*')
           .single();
@@ -1413,9 +1431,21 @@ export default function TreinosScreen() {
     }
   }
 
+  const nomeCriadorModal =
+    editTreino?.treinador?.full_name ||
+    editTreino?.treinador?.email ||
+    '—';
+
+  const nomeEditorModal =
+    editTreino?.editor?.full_name ||
+    editTreino?.editor?.email ||
+    null;
+
   function renderItem({ item }: { item: Treino }) {
     const dt = new Date(item.data_hora);
     const resumo = presCount[item.id] ?? { presente: 0, faltou: 0, justificou: 0 };
+    const nomeCriador = item.treinador?.full_name || item.treinador?.email || '—';
+    const nomeEditor = item.editor?.full_name || item.editor?.email || null;
 
     // ===== WEB DESKTOP =====
     if (isWeb && !isNarrowWeb) {
@@ -1438,6 +1468,12 @@ export default function TreinosScreen() {
                 {item.descricao}
               </Text>
             )}
+
+            <Text style={styles.webRowSub} numberOfLines={1}>
+              Criado por: {nomeCriador}
+              {nomeEditor && nomeEditor !== nomeCriador ? ` • Últ. edição: ${nomeEditor}` : ''}
+            </Text>
+
           </View>
 
           {/* ações */}
@@ -1488,6 +1524,12 @@ export default function TreinosScreen() {
                 {item.descricao}
               </Text>
             )}
+
+            <Text style={styles.mobileSub} numberOfLines={2}>
+              Criado por: {nomeCriador}
+              {nomeEditor && nomeEditor !== nomeCriador ? ` • Últ. edição: ${nomeEditor}` : ''}
+            </Text>
+
           </View>
 
           <View style={styles.webMobileActionsRow}>
@@ -1534,6 +1576,11 @@ export default function TreinosScreen() {
               {item.descricao}
             </Text>
           )}
+          
+          <Text style={styles.mobileSub} numberOfLines={2}>
+            Criado por: {nomeCriador}
+            {nomeEditor && nomeEditor !== nomeCriador ? ` • Últ. edição: ${nomeEditor}` : ''}
+          </Text>
         </View>
 
         <View style={styles.mobileActionsRow}>
@@ -1644,6 +1691,12 @@ export default function TreinosScreen() {
                 <View style={[styles.box, styles.infoBoxLimited]}>
                   <ScrollView showsVerticalScrollIndicator={false}>
                     <InfoRow label="Data" value={dataHora.toLocaleString()} />
+                    <InfoRow label="Criado por" value={nomeCriadorModal} />
+
+                    {nomeEditorModal && nomeEditorModal !== nomeCriadorModal && (
+                      <InfoRow label="Últ. edição" value={nomeEditorModal} />
+                    )}
+
                     <InfoRow label="Local" value={local} />
                     <InfoRow label="Descrição" value={descricao} />
                   </ScrollView>
