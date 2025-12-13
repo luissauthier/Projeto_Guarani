@@ -236,7 +236,7 @@ function isCpfLenOk(digits?: string | null) { return !!digits && digits.length =
 function isCnpjLenOk(digits?: string | null) { return !!digits && digits.length === 14; }
 
 /* ============== Tipos ============== */
-type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo';
+type StatusJog = 'pre_inscrito' | 'ativo' | 'inativo' | 'pre_inscrito_treino';
 type TipoCol = 'viewer' | 'coach' | 'admin';
 
 type Jogador = {
@@ -269,7 +269,7 @@ type UserRow = {
   updated_at: string | null;
 };
 
-const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo'];
+const STATUS_OPTIONS: StatusJog[] = ['pre_inscrito','ativo','inativo','pre_inscrito_treino'];
 const COL_TIPOS: TipoCol[] = ['viewer', 'coach', 'admin'];
 const getCategoriaAno = (j: Jogador) =>
   j.categoria ?? (j.data_nascimento ? new Date(j.data_nascimento).getFullYear() : null);
