@@ -426,6 +426,11 @@ const [savingFast, setSavingFast] = useState(false);
     }
   }
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> b10dde7 (pre inscrito alteracao)
 const handleFastSignup = async () => {
   let valido = true;
   if (!nome.trim()) {
@@ -458,7 +463,11 @@ const categoriaAno = ano;
     categoria: categoriaAno,                 // Salva "2010", "2012", etc.
     
     // Campos obrigatórios que configuramos antes
+<<<<<<< HEAD
     status: 'pre_inscrito_treino', 
+=======
+    status: 'pre_inscrito', 
+>>>>>>> b10dde7 (pre inscrito alteracao)
     termo_entregue: false,
     is_jogador_guarani: false,
     created_at: new Date().toISOString(),
@@ -483,6 +492,10 @@ const categoriaAno = ano;
   }
 };
 
+<<<<<<< HEAD
+=======
+>>>>>>> 096b4cf (pre inscrito alteracao)
+>>>>>>> b10dde7 (pre inscrito alteracao)
   function handleChangeFimDraft(v: string) {
     setFimDraft(v);
     if (Platform.OS !== 'web') {
@@ -1089,6 +1102,12 @@ const categoriaAno = ano;
       .select('id, nome, categoria, status')
 <<<<<<< HEAD
       .in('status', ['ativo', 'pre_inscrito'])
+=======
+      // TROQUE O .eq PELO .in E PASSE UM ARRAY COM AS OPÇÕES
+      .in('status', ['ativo', 'pre_inscrito']) 
+      .order('status', { ascending: false }) 
+
+>>>>>>> 096b4cf (pre inscrito alteracao)
       .order('nome', { ascending: true });
 
 =======
@@ -2223,6 +2242,7 @@ const categoriaAno = ano;
                     keyboardShouldPersistTaps="handled"
                     data={jogadoresAtivos}
                     keyExtractor={(j) => j.id}
+<<<<<<< HEAD
                     renderItem={({ item, index }) => {
                       const isLastActive = index === jogadoresAtivos.length - 1;
                       const hideBorder = isLastActive && jogadoresPre.length > 0;
@@ -2264,6 +2284,27 @@ const categoriaAno = ano;
                         </View>
                       ) : null
                     }
+=======
+                    renderItem={({ item }) => (
+                      <View style={styles.rowSel}>
+                        <Text style={{ color: '#fff', flex: 1 }}>
+                          {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+                          
+                          {/* Adiciona o Status Formatado e Colorido */}
+                          <Text style={{ 
+                            fontWeight: 'bold', 
+                            fontSize: 12, 
+                            // Usa verde para ativo, amarelo para pré-inscrito (baseado nas cores do seu tema)
+                            color: item.status === 'ativo' ? '#2ecc71' : '#f1c40f' 
+                          }}>
+                            {' '}— {item.status === 'pre_inscrito' ? 'Pré-inscrito' : 'Ativo'}
+                          </Text>
+                        </Text>
+                        <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
+                      </View>
+                    )}
+                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
+>>>>>>> 096b4cf (pre inscrito alteracao)
                   />
                 </View>
               </>
