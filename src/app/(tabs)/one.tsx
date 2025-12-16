@@ -338,6 +338,15 @@ export default function TreinosScreen() {
   const [inicioDraft, setInicioDraft] = useState<string>('');
   const [fimDraft, setFimDraft] = useState<string>('');
 
+  const [showFastSignup, setShowFastSignup] = useState(false);
+  const [fastNome, setFastNome] = useState('');
+  const [fastDataNascBr, setFastDataNascBr] = useState(''); // DD/MM/AAAA
+  const [fastTelefoneMasked, setFastTelefoneMasked] = useState('');
+  const [fastTelefoneDigits, setFastTelefoneDigits] = useState('');
+  const [fastEmail, setFastEmail] = useState('');
+  const [fastResponsavel, setFastResponsavel] = useState('');
+  const [savingFast, setSavingFast] = useState(false);
+
   useEffect(() => {
     setInicioDraft(inicioStr);
   }, [inicioStr]);
@@ -351,6 +360,13 @@ export default function TreinosScreen() {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
   }, []);
+
+  const [playersFiltersCollapsed, setPlayersFiltersCollapsed] = useState(false);
+
+  function togglePlayersFilters() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setPlayersFiltersCollapsed(v => !v);
+  }
 
   function toggleInfoCollapsed() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -376,6 +392,77 @@ export default function TreinosScreen() {
   function aplicarFiltroDatas() {
     setInicioStr(inicioDraft);
     setFimStr(fimDraft);
+  }
+
+  async function handleFastSignup() {
+    // validações mínimas
+    if (!fastNome.trim()) {
+      Alert.alert('Atenção', 'Informe o nome do jogador.');
+      return;
+    }
+
+    const ymd = brToYmd(fastDataNascBr);
+    if (!ymd || !isValidYmd(ymd)) {
+      Alert.alert('Atenção', 'Data de nascimento inválida.');
+      return;
+    }
+
+    const tel = (fastTelefoneDigits ?? '').replace(/\D/g, '');
+    if (tel.length < 10) {
+      Alert.alert('Atenção', 'Informe um telefone válido (com DDD).');
+      return;
+    }
+
+    // calcula se precisa responsável (menor de 18)
+    const dob = new Date(ymd + "T00:00:00");
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    const respObrigatorio = age < 18;
+
+    if (respObrigatorio && !fastResponsavel.trim()) {
+      Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18.');
+      return;
+    }
+
+    setSavingFast(true);
+    try {
+      const categoria = dob.getFullYear();
+
+      const { error } = await supabase.from('jogadores').insert({
+        nome: fastNome.trim(),
+        data_nascimento: ymd,
+        email: fastEmail.trim() || null,
+        telefone: tel,
+        responsavel_nome: respObrigatorio ? fastResponsavel.trim() : (fastResponsavel.trim() || null),
+        status: 'pre_inscrito',
+        categoria,
+        termo_entregue: false,
+        is_jogador_guarani: false,
+        observacao: null,
+      });
+
+      if (error) throw error;
+
+      Alert.alert('Sucesso', 'Pré-inscrito cadastrado!');
+      setShowFastSignup(false);
+
+      // limpa campos
+      setFastNome('');
+      setFastDataNascBr('');
+      setFastTelefoneMasked('');
+      setFastTelefoneDigits('');
+      setFastEmail('');
+      setFastResponsavel('');
+
+      // recarrega a lista (pra aparecer na box Pré-inscritos)
+      await loadJogadoresChamada();
+    } catch (e: any) {
+      Alert.alert('Erro ao cadastrar', e?.message ?? 'Falha ao cadastrar.');
+    } finally {
+      setSavingFast(false);
+    }
   }
 
   // --- contagem de presenças por treino ---
@@ -889,12 +976,12 @@ export default function TreinosScreen() {
 
   useEffect(() => { loadTreinos(); }, [loadTreinos]);
 
-  async function loadJogadoresAtivos() {
+  async function loadJogadoresChamada() {
     const { data, error } = await supabase
       .from('jogadores')
       .select('id, nome, categoria, status')
-      .eq('status', 'ativo')
-      .order('nome', { ascending: true }); 
+      .in('status', ['ativo', 'pre_inscrito'])
+      .order('nome', { ascending: true });
 
     if (error) {
       Alert.alert('Erro ao carregar jogadores', error.message);
@@ -930,7 +1017,7 @@ export default function TreinosScreen() {
     setStatusMap(stMap);
   }
 
-  function openCreate() {
+  async function openCreate() {
     setInfoCollapsed(false);
     setReadOnly(false);
     setEditTreino(null);
@@ -943,7 +1030,7 @@ export default function TreinosScreen() {
     setDataHoraBr(ymdToBr(dateToYmd(d)));
     setHoraBr(dateToHm(d));
     setModal(true);
-    loadJogadoresAtivos();
+    await loadJogadoresChamada();
   }
 
   // --- CORREÇÃO: Chama a busca de presenças ao editar ---
@@ -959,7 +1046,7 @@ export default function TreinosScreen() {
     setDescricao(t.descricao ?? '');
     setSel({}); // limpa antes de recarregar
     setStatusMap({});
-    await loadJogadoresAtivos();
+    await loadJogadoresChamada();
     await loadExistingPresences(t.id);
     setModal(true); // abre depois que os dados chegaram
   }
@@ -976,7 +1063,7 @@ export default function TreinosScreen() {
     setDescricao(t.descricao ?? '');
     setSel({});
     setStatusMap({});
-    await loadJogadoresAtivos();
+    await loadJogadoresChamada();
     await loadExistingPresences(t.id);
     setModal(true);
   }
@@ -1267,6 +1354,16 @@ export default function TreinosScreen() {
     return list;
   }, [jogadores, yearFrom, yearTo, searchJog]);
 
+  const jogadoresAtivos = useMemo(
+    () => jogadoresFiltrados.filter(j => j.status === 'ativo'),
+    [jogadoresFiltrados]
+  );
+
+  const jogadoresPre = useMemo(
+    () => jogadoresFiltrados.filter(j => j.status === 'pre_inscrito'),
+    [jogadoresFiltrados]
+  );
+
   const treinosFiltrados = useMemo(() => {
     const q = buscaTreino.trim().toLowerCase();
     if (!q) return treinos;
@@ -1306,7 +1403,6 @@ export default function TreinosScreen() {
 
   // --- CORREÇÃO: Função para salvar/atualizar presenças ---
   async function updatePresencas(treinoId: string) {
-    // 1) remove tudo do treino (mantém unicidade limpa)
     const { error: deleteError } = await supabase
       .from('presenca')
       .delete()
@@ -1316,12 +1412,12 @@ export default function TreinosScreen() {
       throw new Error(`Erro ao apagar presenças antigas: ${deleteError.message}`);
     }
 
-    // 2) quem está marcado => presente
+    // marcados (ativos + pré)
     const selecionados = Object.keys(sel).filter((id) => sel[id]);
 
-    // 3) quem é ativo mas NÃO está marcado => falta
-    const ativosTodos = jogadores.map(j => j.id);
-    const naoSelecionados = ativosTodos.filter((id) => !sel[id]);
+    // faltas: somente ATIVOS não marcados
+    const ativosTodos = jogadores.filter(j => j.status === 'ativo').map(j => j.id);
+    const naoSelecionadosAtivos = ativosTodos.filter((id) => !sel[id]);
 
     const rows = [
       ...selecionados.map((jid) => ({
@@ -1329,7 +1425,7 @@ export default function TreinosScreen() {
         jogador_id: jid,
         status: 'presente' as const,
       })),
-      ...naoSelecionados.map((jid) => ({
+      ...naoSelecionadosAtivos.map((jid) => ({
         treino_id: treinoId,
         jogador_id: jid,
         status: 'faltou' as const,
@@ -1603,6 +1699,54 @@ export default function TreinosScreen() {
     );
   }
 
+  const jogadoresAtivosRO = useMemo(
+    () => jogadoresFiltrados.filter(j => j.status === 'ativo'),
+    [jogadoresFiltrados]
+  );
+
+  const jogadoresPreRO = useMemo(
+    () => jogadoresFiltrados.filter(j => j.status === 'pre_inscrito'),
+    [jogadoresFiltrados]
+  );
+
+  function renderAlunoReadOnly(item: Jogador, opts?: { hideBorder?: boolean; showPreBadge?: boolean }) {
+    const stRaw = statusMap[item.id];
+    const st = stRaw ?? (item.status === 'ativo' ? 'faltou' : null);
+
+    const rowStyle = [styles.rowSel, opts?.hideBorder && { borderBottomWidth: 0 }];
+
+    if (!st) {
+      return (
+        <View style={rowStyle}>
+          {!!opts?.showPreBadge && <View style={styles.preBadge} />}
+          <Text style={{ color:'#fff', flex:1 }}>
+            {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+          </Text>
+        </View>
+      );
+    }
+
+    const icon =
+      st === 'presente' ? 'check-circle' :
+      st === 'justificou' ? 'minus-circle' :
+      'x-circle';
+
+    const color =
+      st === 'presente' ? '#2ecc71' :
+      st === 'justificou' ? '#f1c40f' :
+      '#e74c3c';
+
+    return (
+      <View style={rowStyle}>
+        {!!opts?.showPreBadge && <View style={styles.preBadge} />}
+        <Text style={{ color:'#fff', flex:1 }}>
+          {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+        </Text>
+        <Feather name={icon as any} size={20} color={color} />
+      </View>
+    );
+  }
+
   return (
     <AppSafeArea style={styles.container}>
       {/* <View style={styles.header}>
@@ -1707,25 +1851,36 @@ export default function TreinosScreen() {
                   <Text style={{ color:'#fff', fontWeight:'bold', marginBottom: 8 }}>Alunos</Text>
 
                   <FlatList
-                    style={{ flex: 1 }}                 // <- garante que a lista use o espaço restante
-                    contentContainerStyle={{ paddingBottom: 4 }}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: 8 }}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
-                    data={jogadoresFiltrados}
+                    data={jogadoresAtivosRO}
                     keyExtractor={(j) => j.id}
-                    renderItem={({ item }) => {
-                      const st = statusMap[item.id] || 'faltou';
-                      const icon = st === 'presente' ? 'check-circle' : (st === 'justificou' ? 'minus-circle' : 'x-circle');
-                      const color = st === 'presente' ? '#2ecc71' : (st === 'justificou' ? '#f1c40f' : '#e74c3c');
-                      return (
-                        <View style={styles.rowSel}>
-                          <Text style={{ color:'#fff', flex:1 }}>
-                            {item.nome} {item.categoria ? `(${item.categoria})` : ''}
-                          </Text>
-                          <Feather name={icon as any} size={20} color={color} />
-                        </View>
-                      );
+                    renderItem={({ item, index }) => {
+                      const isLastActive = index === jogadoresAtivosRO.length - 1;
+                      const hideBorder = isLastActive && jogadoresPreRO.length > 0;
+                      return renderAlunoReadOnly(item, { hideBorder });
                     }}
+                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo.</Text>}
+                    ListFooterComponent={
+                      jogadoresPreRO.length > 0 ? (
+                        <View style={{ paddingTop: 8 }}>
+                          <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 16, marginBottom: 8 }}>
+                            Pré-inscritos
+                          </Text>
+
+                          {jogadoresPreRO.map((p, idx) => {
+                            const isLast = idx === jogadoresPreRO.length - 1;
+                            return (
+                              <View key={p.id}>
+                                {renderAlunoReadOnly(p, { hideBorder: isLast, showPreBadge: true })}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : null
+                    }
                   />
                 </View>
               </View>
@@ -1848,76 +2003,132 @@ export default function TreinosScreen() {
                   </View>
                 )}
 
-                {/* Lista de chamada continua igual */}
+                {/* Lista de chamada*/}
                 <View style={[styles.box, { flex: 1 }]}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 8 }}>
-                    Selecionar jogadores (ativos)
-                  </Text>
 
-                  {/* Filtro por categoria (ano) */}
-                  <View
-                    style={{
-                      flexDirection: isVeryNarrowWeb ? 'column' : 'row',
-                      gap: isVeryNarrowWeb ? 0 : 10,
-                      width: '100%',
-                    }}
+                  {/* FIXOS (fora da FlatList) */}
+                  <TouchableOpacity
+                    style={[styles.btnNeutral, { marginBottom: 10, justifyContent: 'center' }]}
+                    onPress={() => setShowFastSignup(true)}
                   >
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          flex: isVeryNarrowWeb ? undefined : 1,
-                          width: '100%',
-                          minWidth: 0,
-                        },
-                      ]}
-                      placeholder="Ano de (ex: 2008)"
-                      placeholderTextColor="#A0A0A0"
-                      keyboardType="numeric"
-                      value={yearFrom}
-                      onChangeText={handleYearFrom}
-                    />
-                    <TextInput
-                      style={[
-                        styles.input,
-                        {
-                          flex: isVeryNarrowWeb ? undefined : 1,
-                          width: '100%',
-                          minWidth: 0,
-                        },
-                      ]}
-                      placeholder="Ano até (ex: 2012)"
-                      placeholderTextColor="#A0A0A0"
-                      keyboardType="numeric"
-                      value={yearTo}
-                      onChangeText={handleYearTo}
-                    />
+                    <Feather name="user-plus" size={16} color="#fff" />
+                    <Text style={styles.btnText}>  Inscrição rápida</Text>
+                  </TouchableOpacity>
+
+                  <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom: 8 }}>
+                    <Text style={{ color:'#fff', fontWeight:'bold' }}>Selecionar jogadores</Text>
+
+                    <TouchableOpacity
+                      onPress={togglePlayersFilters}
+                      style={{ flexDirection:'row', alignItems:'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor:'#203A4A' }}
+                    >
+                      <Text style={{ color:'#B0B0B0', fontSize: 12, fontWeight:'600' }}>
+                        {playersFiltersCollapsed ? 'Mostrar filtros' : 'Recolher filtros'}
+                      </Text>
+                      <Feather name={playersFiltersCollapsed ? 'chevron-down' : 'chevron-up'} size={16} color="#fff" />
+                    </TouchableOpacity>
                   </View>
 
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Pesquisar nome/ano"
-                    placeholderTextColor="#A0A0A0"
-                    value={searchJog}
-                    onChangeText={setSearchJog}
-                  />
+                  {!playersFiltersCollapsed && (
+                    <>
+                      {/* Filtro por categoria (ano) */}
+                      <View
+                        style={{
+                          flexDirection: isVeryNarrowWeb ? 'column' : 'row',
+                          gap: isVeryNarrowWeb ? 0 : 10,
+                          width: '100%',
+                        }}
+                      >
+                        <TextInput
+                          style={[
+                            styles.input,
+                            { flex: isVeryNarrowWeb ? undefined : 1, width: '100%', minWidth: 0 },
+                          ]}
+                          placeholder="Ano de (ex: 2008)"
+                          placeholderTextColor="#A0A0A0"
+                          keyboardType="numeric"
+                          value={yearFrom}
+                          onChangeText={handleYearFrom}
+                        />
 
+                        <TextInput
+                          style={[
+                            styles.input,
+                            { flex: isVeryNarrowWeb ? undefined : 1, width: '100%', minWidth: 0 },
+                          ]}
+                          placeholder="Ano até (ex: 2012)"
+                          placeholderTextColor="#A0A0A0"
+                          keyboardType="numeric"
+                          value={yearTo}
+                          onChangeText={handleYearTo}
+                        />
+                      </View>
+
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Pesquisar nome/ano"
+                        placeholderTextColor="#A0A0A0"
+                        value={searchJog}
+                        onChangeText={setSearchJog}
+                      />
+                    </>
+                  )}
+
+                  {playersFiltersCollapsed && (yearFrom || yearTo || searchJog) ? (
+                    <Text style={{ color:'#B0B0B0', fontSize: 12, marginBottom: 8 }}>
+                      Filtros: {yearFrom ? `de ${yearFrom}` : ''}{yearTo ? ` até ${yearTo}` : ''}{searchJog ? ` • "${searchJog}"` : ''}
+                    </Text>
+                  ) : null}
+
+                  {/* SCROLL SÓ AQUI */}
                   <FlatList
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingBottom: 4 }}
+                    contentContainerStyle={{ paddingBottom: 8 }}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
-                    data={jogadoresFiltrados}
+                    data={jogadoresAtivos}
                     keyExtractor={(j) => j.id}
-                    renderItem={({ item }) => (
-                      <View style={styles.rowSel}>
-                        <Text style={{ color: '#fff', flex: 1 }}>
-                          {item.nome} {item.categoria ? `(${item.categoria})` : ''}
-                        </Text>
-                        <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
-                      </View>
-                    )}
-                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
+                    renderItem={({ item, index }) => {
+                      const isLastActive = index === jogadoresAtivos.length - 1;
+                      const hideBorder = isLastActive && jogadoresPre.length > 0;
+
+                      return (
+                        <View style={[styles.rowSel, hideBorder && { borderBottomWidth: 0 }]}>
+                          <Text style={{ color: '#fff', flex: 1 }}>
+                            {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+                          </Text>
+                          <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
+                        </View>
+                      );
+                    }}
+                    ListEmptyComponent={
+                      <Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>
+                    }
+                    ListFooterComponent={
+                      jogadoresPre.length > 0 ? (
+                        <View style={{ paddingTop: 8 }}>
+                          <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginTop: 16, marginBottom: 8 }}>
+                            Pré-inscritos
+                          </Text>
+
+                          {jogadoresPre.map((item, idx) => {
+                            const isLastPre = idx === jogadoresPre.length - 1;
+                            return (
+                              <View
+                                key={item.id}
+                                style={[styles.rowSel, isLastPre && { borderBottomWidth: 0 }]}
+                              >
+                                <View style={styles.preBadge} />
+                                <Text style={{ color: '#fff', flex: 1 }}>
+                                  {item.nome} {item.categoria ? `(${item.categoria})` : ''}
+                                </Text>
+                                <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : null
+                    }
                   />
                 </View>
               </>
@@ -1942,6 +2153,89 @@ export default function TreinosScreen() {
             </View>
           </View>
         </AppSafeArea >
+      </Modal>
+
+      <Modal
+        visible={showFastSignup}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFastSignup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { alignItems: 'stretch' }]}>
+            <Text style={styles.modalTitle}>Inscrição rápida</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Nome completo"
+              placeholderTextColor="#A0A0A0"
+              value={fastNome}
+              onChangeText={setFastNome}
+            />
+
+            <TextInputMask
+              type={'datetime'}
+              options={{ format: 'DD/MM/YYYY' }}
+              value={fastDataNascBr}
+              onChangeText={setFastDataNascBr}
+              placeholder="Data de nascimento (DD/MM/AAAA)"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+
+            <TextInputMask
+              type={'cel-phone'}
+              options={{ maskType:'BRL', withDDD:true, dddMask:'(99) ' }}
+              value={fastTelefoneMasked}
+              onChangeText={(masked) => {
+                const v = masked ?? '';
+                setFastTelefoneMasked(v);
+                setFastTelefoneDigits(v.replace(/\D/g, ''));
+              }}
+              placeholder="Telefone do responsável (com DDD)"
+              placeholderTextColor="#A0A0A0"
+              keyboardType="phone-pad"
+              style={styles.input}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="E-mail (opcional)"
+              placeholderTextColor="#A0A0A0"
+              value={fastEmail}
+              onChangeText={setFastEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Nome do responsável (se menor de 18)"
+              placeholderTextColor="#A0A0A0"
+              value={fastResponsavel}
+              onChangeText={setFastResponsavel}
+            />
+
+            <View style={{ flexDirection:'row', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.btnNeutral, { flex: 1 }]}
+                onPress={() => setShowFastSignup(false)}
+                disabled={savingFast}
+              >
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1 }]}
+                onPress={handleFastSignup}
+                disabled={savingFast}
+              >
+                {savingFast ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Salvar</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <FiltersModal visible={filtersOpen} onClose={() => setFiltersOpen(false)}>
@@ -2400,6 +2694,12 @@ const styles = StyleSheet.create({
   },
   infoBoxLimited: {
     maxHeight: Platform.OS === 'web' ? 220 : 160,
+  },
+  preBadge: {
+    width: 10,
+    height: 10,
+    borderRadius: 99,
+    backgroundColor: '#f1c40f',
   },
 });
 
