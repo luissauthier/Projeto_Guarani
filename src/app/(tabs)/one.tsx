@@ -347,6 +347,13 @@ export default function TreinosScreen() {
   const [fastResponsavel, setFastResponsavel] = useState('');
   const [savingFast, setSavingFast] = useState(false);
 
+  const [fastErrors, setFastErrors] = useState<{
+    nome?: string;
+    data_nascimento?: string;
+    telefone?: string;
+    responsavel?: string;
+  }>({});
+
   useEffect(() => {
     setInicioDraft(inicioStr);
   }, [inicioStr]);
@@ -395,25 +402,30 @@ export default function TreinosScreen() {
   }
 
   async function handleFastSignup() {
-    // validações mínimas
+    setFastErrors({});
+
     if (!fastNome.trim()) {
-      Alert.alert('Atenção', 'Informe o nome do jogador.');
+      setFastErrors(e => ({ ...e, nome: 'Informe o nome do jogador.' }));
       return;
     }
 
     const ymd = brToYmd(fastDataNascBr);
-    if (!ymd || !isValidYmd(ymd)) {
-      Alert.alert('Atenção', 'Data de nascimento inválida.');
+    if (!ymd) {
+      setFastErrors(e => ({ ...e, data_nascimento: 'Informe a data de nascimento (DD/MM/AAAA).' }));
+      return;
+    }
+    if (!isValidYmd(ymd)) {
+      setFastErrors(e => ({ ...e, data_nascimento: 'Data de nascimento inválida.' }));
       return;
     }
 
     const tel = (fastTelefoneDigits ?? '').replace(/\D/g, '');
     if (tel.length < 10) {
-      Alert.alert('Atenção', 'Informe um telefone válido (com DDD).');
+      setFastErrors(e => ({ ...e, telefone: 'Informe um telefone válido (com DDD).' }));
       return;
     }
 
-    // calcula se precisa responsável (menor de 18)
+    // menor de 18 => responsável obrigatório
     const dob = new Date(ymd + "T00:00:00");
     const today = new Date();
     let age = today.getFullYear() - dob.getFullYear();
@@ -422,7 +434,7 @@ export default function TreinosScreen() {
     const respObrigatorio = age < 18;
 
     if (respObrigatorio && !fastResponsavel.trim()) {
-      Alert.alert('Atenção', 'Responsável é obrigatório para menores de 18.');
+      setFastErrors(e => ({ ...e, responsavel: 'Responsável é obrigatório para menores de 18.' }));
       return;
     }
 
@@ -455,8 +467,8 @@ export default function TreinosScreen() {
       setFastTelefoneDigits('');
       setFastEmail('');
       setFastResponsavel('');
+      setFastErrors({});
 
-      // recarrega a lista (pra aparecer na box Pré-inscritos)
       await loadJogadoresChamada();
     } catch (e: any) {
       Alert.alert('Erro ao cadastrar', e?.message ?? 'Falha ao cadastrar.');
@@ -2166,23 +2178,42 @@ export default function TreinosScreen() {
             <Text style={styles.modalTitle}>Inscrição rápida</Text>
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                fastErrors.nome && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+              ]}
               placeholder="Nome completo"
               placeholderTextColor="#A0A0A0"
               value={fastNome}
-              onChangeText={setFastNome}
+              onChangeText={(t) => { setFastNome(t); if (fastErrors.nome) setFastErrors(e => ({ ...e, nome: undefined })); }}
             />
+            {!!fastErrors.nome && (
+              <Text style={{ color:'#FF6B6B', marginTop:-6, marginBottom:10, fontSize:12 }}>
+                {fastErrors.nome}
+              </Text>
+            )}
 
             <TextInputMask
               type={'datetime'}
               options={{ format: 'DD/MM/YYYY' }}
               value={fastDataNascBr}
-              onChangeText={setFastDataNascBr}
+              onChangeText={(t) => {
+                setFastDataNascBr(t);
+                if (fastErrors.data_nascimento) setFastErrors(e => ({ ...e, data_nascimento: undefined }));
+              }}
               placeholder="Data de nascimento (DD/MM/AAAA)"
               placeholderTextColor="#A0A0A0"
               keyboardType="number-pad"
-              style={styles.input}
+              style={[
+                styles.input,
+                fastErrors.data_nascimento && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+              ]}
             />
+            {!!fastErrors.data_nascimento && (
+              <Text style={{ color:'#FF6B6B', marginTop:-6, marginBottom:10, fontSize:12 }}>
+                {fastErrors.data_nascimento}
+              </Text>
+            )}
 
             <TextInputMask
               type={'cel-phone'}
@@ -2192,12 +2223,21 @@ export default function TreinosScreen() {
                 const v = masked ?? '';
                 setFastTelefoneMasked(v);
                 setFastTelefoneDigits(v.replace(/\D/g, ''));
+                if (fastErrors.telefone) setFastErrors(e => ({ ...e, telefone: undefined }));
               }}
               placeholder="Telefone do responsável (com DDD)"
               placeholderTextColor="#A0A0A0"
               keyboardType="phone-pad"
-              style={styles.input}
+              style={[
+                styles.input,
+                fastErrors.telefone && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+              ]}
             />
+            {!!fastErrors.telefone && (
+              <Text style={{ color:'#FF6B6B', marginTop:-6, marginBottom:10, fontSize:12 }}>
+                {fastErrors.telefone}
+              </Text>
+            )}
 
             <TextInput
               style={styles.input}
@@ -2210,12 +2250,23 @@ export default function TreinosScreen() {
             />
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                fastErrors.responsavel && { borderColor: '#FF6B6B', backgroundColor: '#2A1F1F' },
+              ]}
               placeholder="Nome do responsável (se menor de 18)"
               placeholderTextColor="#A0A0A0"
               value={fastResponsavel}
-              onChangeText={setFastResponsavel}
+              onChangeText={(t) => {
+                setFastResponsavel(t);
+                if (fastErrors.responsavel) setFastErrors(e => ({ ...e, responsavel: undefined }));
+              }}
             />
+            {!!fastErrors.responsavel && (
+              <Text style={{ color:'#FF6B6B', marginTop:-6, marginBottom:10, fontSize:12 }}>
+                {fastErrors.responsavel}
+              </Text>
+            )}
 
             <View style={{ flexDirection:'row', gap: 10 }}>
               <TouchableOpacity
