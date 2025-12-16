@@ -1245,7 +1245,7 @@ export default function TreinosScreen() {
                   onChangeText={(txt) => {
                     const only = txt.replace(/\D/g, '').slice(0, 2);
                     let mm = only;
-                    if (mm.length === 1) mm = mm; // deixa digitar
+                    if (mm.length === 1) mm = mm;
                     if (mm.length === 2) {
                       const n = Number(mm);
                       if (n < 1 || n > 12) mm = '';
