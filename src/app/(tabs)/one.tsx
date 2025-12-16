@@ -141,7 +141,6 @@ async function getDetalheTreinoRows(treinoId: string) {
     });
   }
 
-  
   const rows = (pres ?? [])
     .map(p => ({
       nome: nomes[p.jogador_id]?.nome ?? '',
@@ -277,36 +276,6 @@ type Jogador = {
 /* ================= Component ================= */
 
 export default function TreinosScreen() {
-  const [dataNascimento, setDataNascimento] = useState('');
-const [erroData, setErroData] = useState('');
-  const [nome, setNome] = useState('');
-  const [erroNome, setErroNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-const [erroTelefone, setErroTelefone] = useState('');
-const handleChangeTelefone = (text: string) => {
-  let value = text.replace(/\D/g, ''); // Remove não-números
-  if (value.length > 11) value = value.slice(0, 11); // Limite de tamanho
-
-  // Máscara (XX) XXXXX-XXXX
-  value = value.replace(/^(\d{2})(\d)/, '($1) $2');
-  value = value.replace(/(\d{5})(\d)/, '$1-$2');
-
-  setTelefone(value);
-  if (value) setErroTelefone(''); // Limpa erro ao digitar
-};
-const handleChangeData = (text: string) => {
-  let value = text.replace(/\D/g, ''); // Remove tudo que não é número
-  
-  if (value.length > 8) value = value.slice(0, 8); // Limita a 8 números (ddmmaaaa)
-
-  // Adiciona as barras: DD/MM/AAAA
-  value = value.replace(/(\d{2})(\d)/, '$1/$2'); 
-  value = value.replace(/(\d{2})(\d)/, '$1/$2'); 
-  
-  setDataNascimento(value);
-  
-  if (value) setErroData(''); // Limpa erro ao digitar
-};
 
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
@@ -369,7 +338,6 @@ const handleChangeData = (text: string) => {
   const [inicioDraft, setInicioDraft] = useState<string>('');
   const [fimDraft, setFimDraft] = useState<string>('');
 
-<<<<<<< HEAD
   const [showFastSignup, setShowFastSignup] = useState(false);
   const [fastNome, setFastNome] = useState('');
   const [fastDataNascBr, setFastDataNascBr] = useState(''); // DD/MM/AAAA
@@ -385,12 +353,6 @@ const handleChangeData = (text: string) => {
     telefone?: string;
     responsavel?: string;
   }>({});
-=======
-const [showFastSignup, setShowFastSignup] = useState(false);
-const [fastName, setFastName] = useState('');
-const [fastPhone, setFastPhone] = useState('');
-const [savingFast, setSavingFast] = useState(false);
->>>>>>> 3adf622 (Pre inscrito treino)
 
   useEffect(() => {
     setInicioDraft(inicioStr);
@@ -426,76 +388,6 @@ const [savingFast, setSavingFast] = useState(false);
     }
   }
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-=======
->>>>>>> b10dde7 (pre inscrito alteracao)
-const handleFastSignup = async () => {
-  let valido = true;
-  if (!nome.trim()) {
-    setErroNome('O nome é obrigatório');
-    valido = false;
-  }
-  // Validação básica se a data está completa (10 chars = 01/01/2000)
-if (dataNascimento.length < 10) {
-  setErroData('Data inválida');
-  return;
-}
-const [dia, mes, ano] = dataNascimento.split('/');
-const dataFormatadaParaBanco = `${ano}-${mes}-${dia}`;
-const categoriaAno = ano;
-
-  // Validação do Telefone
-  if (!telefone.trim()) {
-    setErroTelefone('O telefone é obrigatório');
-    valido = false;
-  }
-  if (!valido) return;
-  setSavingFast(true);
-  try {
-    const { error } = await supabase.from('jogadores').insert({
-    nome: nome.trim(), // usando seu estado 'nome'
-    telefone: telefone.replace(/\D/g, ''),
-    
-    // Novas colunas
-    data_nascimento: dataFormatadaParaBanco, // Salva YYYY-MM-DD
-    categoria: categoriaAno,                 // Salva "2010", "2012", etc.
-    
-    // Campos obrigatórios que configuramos antes
-<<<<<<< HEAD
-    status: 'pre_inscrito_treino', 
-=======
-    status: 'pre_inscrito', 
->>>>>>> b10dde7 (pre inscrito alteracao)
-    termo_entregue: false,
-    is_jogador_guarani: false,
-    created_at: new Date().toISOString(),
-});
-
-    if (error) throw error;
-
-    Alert.alert('Sucesso', 'Jogador adicionado à lista!');
-    
-    // Limpa o form e fecha o modal rápido
-    setFastName('');
-    setFastPhone('');
-    setShowFastSignup(false);
-
-    // Recarrega os jogadores para ele aparecer na lista de presença imediatamente
-    loadJogadoresAtivos(); 
-
-  } catch (error: any) {
-    Alert.alert('Erro ao cadastrar', error.message);
-  } finally {
-    setSavingFast(false);
-  }
-};
-
-<<<<<<< HEAD
-=======
->>>>>>> 096b4cf (pre inscrito alteracao)
->>>>>>> b10dde7 (pre inscrito alteracao)
   function handleChangeFimDraft(v: string) {
     setFimDraft(v);
     if (Platform.OS !== 'web') {
@@ -1100,29 +992,16 @@ const categoriaAno = ano;
     const { data, error } = await supabase
       .from('jogadores')
       .select('id, nome, categoria, status')
-<<<<<<< HEAD
       .in('status', ['ativo', 'pre_inscrito'])
-=======
-      // TROQUE O .eq PELO .in E PASSE UM ARRAY COM AS OPÇÕES
-      .in('status', ['ativo', 'pre_inscrito']) 
-      .order('status', { ascending: false }) 
-
->>>>>>> 096b4cf (pre inscrito alteracao)
       .order('nome', { ascending: true });
 
-=======
-      // TROQUE O .eq PELO .in E PASSE UM ARRAY COM AS OPÇÕES
-      .in('status', ['ativo', 'pre_inscrito_treino']) 
-      .order('nome', { ascending: true });
- 
->>>>>>> 3adf622 (Pre inscrito treino)
     if (error) {
       Alert.alert('Erro ao carregar jogadores', error.message);
       setJogadores([]);
     } else {
       setJogadores((data ?? []) as any);
     }
-}
+  }
 
   // Carrega do banco e liga o switch APENAS para quem está "presente"
   async function loadExistingPresences(treinoId: string) {
@@ -1897,7 +1776,7 @@ const categoriaAno = ano;
       )}
 
       <Text style={styles.h1}>Treinos</Text>
-      
+
       {/* SEARCH + FILTER (igual admin) */}
       <View style={styles.filtersBox}>
         <View style={styles.searchRow}>
@@ -1926,9 +1805,9 @@ const categoriaAno = ano;
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.btnText}>  Novo treino</Text>
           </TouchableOpacity>
+
           <ExportMenu onCsv={exportResumoCsv} onDocx={exportResumoDocx} />
         </View>
-        
       )}
 
       {loading ? (
@@ -1947,37 +1826,18 @@ const categoriaAno = ano;
         <AppSafeArea style={{ flex: 1, backgroundColor: '#0A1931' }}>
           {/* Conteúdo com padding e rodapé fora para fixar no fundo */}
           <View style={{ flex: 1, padding: 16 }}>
-            <View style={{ 
-  flexDirection: 'row', 
-  justifyContent: 'space-between', 
-  alignItems: 'center', 
-  marginBottom: 16 
-}}>
-  {/* Título do Treino */}
-  <Text style={[styles.h1, { marginBottom: 0, flex: 1 }]}>
-    {readOnly ? 'Detalhes do treino' : (editTreino ? 'Editar treino' : 'Novo treino')}
-  </Text>
+            <Text style={styles.h1}>
+              {readOnly ? 'Detalhes do treino' : (editTreino ? 'Editar treino' : 'Novo treino')}
+            </Text>
 
-  {/* BOTÃO DE INSCRIÇÃO RÁPIDA (Com Texto) */}
-  <TouchableOpacity 
-    onPress={() => setShowFastSignup(true)} 
-    style={{ 
-      backgroundColor: '#2ecc71', 
-      borderRadius: 8, 
-      marginLeft: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 8,
-      paddingHorizontal: 12, // Espaço lateral para o texto não colar na borda
-      gap: 8 // Espaço entre ícone e texto
-    }}
-  >
-    <Feather name="user-plus" size={16} color="#FFF" />
-    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>
-      Inscrição Rápida
-    </Text>
-  </TouchableOpacity>
-</View>
+            {readOnly && (
+              <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+                <ExportMenu
+                  onCsv={() => exportDetalheTreinoCsv(editTreino!.id)}
+                  onDocx={() => exportDetalheTreinoDocx(editTreino!)}
+                />
+              </View>
+            )}
 
             {readOnly ? (
               // ==== MODO RELATÓRIO (sem maxHeight) ====
@@ -2054,11 +1914,10 @@ const categoriaAno = ano;
                     },
                   ]}
                 >
-                  
                   <Text style={{ color: '#fff', fontWeight: '700' }}>
                     Informações do treino
                   </Text>
-                  
+
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={{ color: '#B0B0B0', fontSize: 12 }}>
                       {infoCollapsed ? 'Mostrar' : 'Recolher'}
@@ -2068,7 +1927,6 @@ const categoriaAno = ano;
                       size={18}
                       color="#fff"
                     />
-                    
                   </View>
                 </TouchableOpacity>
 
@@ -2242,7 +2100,6 @@ const categoriaAno = ano;
                     keyboardShouldPersistTaps="handled"
                     data={jogadoresAtivos}
                     keyExtractor={(j) => j.id}
-<<<<<<< HEAD
                     renderItem={({ item, index }) => {
                       const isLastActive = index === jogadoresAtivos.length - 1;
                       const hideBorder = isLastActive && jogadoresPre.length > 0;
@@ -2284,27 +2141,6 @@ const categoriaAno = ano;
                         </View>
                       ) : null
                     }
-=======
-                    renderItem={({ item }) => (
-                      <View style={styles.rowSel}>
-                        <Text style={{ color: '#fff', flex: 1 }}>
-                          {item.nome} {item.categoria ? `(${item.categoria})` : ''}
-                          
-                          {/* Adiciona o Status Formatado e Colorido */}
-                          <Text style={{ 
-                            fontWeight: 'bold', 
-                            fontSize: 12, 
-                            // Usa verde para ativo, amarelo para pré-inscrito (baseado nas cores do seu tema)
-                            color: item.status === 'ativo' ? '#2ecc71' : '#f1c40f' 
-                          }}>
-                            {' '}— {item.status === 'pre_inscrito' ? 'Pré-inscrito' : 'Ativo'}
-                          </Text>
-                        </Text>
-                        <Switch value={!!sel[item.id]} onValueChange={() => toggleSel(item.id)} />
-                      </View>
-                    )}
-                    ListEmptyComponent={<Text style={styles.empty}>Nenhum jogador ativo encontrado.</Text>}
->>>>>>> 096b4cf (pre inscrito alteracao)
                   />
                 </View>
               </>
@@ -2331,7 +2167,6 @@ const categoriaAno = ano;
         </AppSafeArea >
       </Modal>
 
-<<<<<<< HEAD
       <Modal
         visible={showFastSignup}
         transparent
@@ -2453,88 +2288,6 @@ const categoriaAno = ano;
           </View>
         </View>
       </Modal>
-=======
-      {/* === MODAL DE CADASTRO RÁPIDO (Aninhada ou Condicional) === */}
-<Modal
-  visible={showFastSignup}
-  transparent={true}
-  animationType="fade"
-  onRequestClose={() => setShowFastSignup(false)}
->
-  <View style={styles.fastModalOverlay}>
-    <View style={styles.fastModalContent}>
-      <Text style={styles.fastModalTitle}>Inscrição Rápida</Text>
-      
-      <Text style={styles.label}>Nome</Text>
-<TextInput
-  style={[
-    styles.input, 
-    erroNome ? styles.inputError : null // Borda vermelha se tiver erro
-  ]}
-  value={nome}
-  onChangeText={(text) => {
-    setNome(text);
-    if (text) setErroNome(''); // Limpa o erro assim que começar a digitar
-  }}
-  placeholder="Nome do jogador"
-/>
-{/* Mensagem de erro do Nome */}
-{!!erroNome && <Text style={styles.errorText}>{erroNome}</Text>}
-
-      <Text style={styles.label}>Telefone</Text>
-<TextInput
-  style={[
-    styles.input, 
-    erroTelefone ? styles.inputError : null // Aplica borda vermelha se tiver erro
-  ]}
-  value={telefone}
-  onChangeText={handleChangeTelefone}
-  placeholder="(00) 00000-0000"
-  keyboardType="numeric"
-  maxLength={15}
-/>
-
-<Text style={styles.label}>Data de Nascimento</Text>
-<TextInput
-  style={[
-    styles.input, 
-    erroData ? styles.inputError : null
-  ]}
-  value={dataNascimento}
-  onChangeText={handleChangeData}
-  placeholder="DD/MM/AAAA"
-  keyboardType="numeric"
-  maxLength={10} // 10 caracteres contando as barras
-/>
-{!!erroData && <Text style={styles.errorText}>{erroData}</Text>}
-
-{/* Mensagem de erro condicional */}
-{!!erroTelefone && <Text style={styles.errorText}>{erroTelefone}</Text>}
-
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-        <TouchableOpacity 
-          style={[styles.btn, { backgroundColor: '#FF4444', flex: 1 }]}
-          onPress={() => setShowFastSignup(false)}
-        >
-          <Text style={styles.btnText}>Cancelar</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.btn, { backgroundColor: '#2ecc71', flex: 1 }]}
-          onPress={handleFastSignup}
-          disabled={savingFast}
-        >
-          {savingFast ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.btnText}>Salvar</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
->>>>>>> 3adf622 (Pre inscrito treino)
 
       <FiltersModal visible={filtersOpen} onClose={() => setFiltersOpen(false)}>
         <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -2993,59 +2746,11 @@ const styles = StyleSheet.create({
   infoBoxLimited: {
     maxHeight: Platform.OS === 'web' ? 220 : 160,
   },
-<<<<<<< HEAD
   preBadge: {
     width: 10,
     height: 10,
     borderRadius: 99,
     backgroundColor: '#f1c40f',
   },
-=======
-  fastModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  fastModalContent: {
-    backgroundColor: '#1E2F47', // Mesma cor dos seus cards
-    width: '100%',
-    maxWidth: 350,
-    padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3A506B',
-    elevation: 5,
-  },
-  fastModalTitle: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  label: {
-    color: '#B0B0B0',
-    marginBottom: 5,
-    fontSize: 14,
-  },
-  btn: {
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputError: {
-  borderColor: '#ff375b', 
-  borderWidth: 1,
-},
-errorText: {
-  color: '#ff375b',
-  fontSize: 12,
-  marginTop: -8, // Ajuste fino para aproximar do input
-  marginBottom: 10,
-},
->>>>>>> 3adf622 (Pre inscrito treino)
 });
 
